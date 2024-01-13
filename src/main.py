@@ -628,7 +628,8 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
 
     results = {
         "attn_type": [],
-        "setting": [],
+        "use_out_proj": [],
+        "identity_weight": [],
         "avg_val_loss": [],
         "num_tries": [],
         "num_steps": [],
@@ -645,7 +646,8 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 val_loss_list.append(val_loss)
             results["attn_type"].append(attn_type)
-            results["setting"].append(str(setting))
+            results["use_out_proj"].append(str(setting.get("use_out_proj", False)))  # str so that pl.Config.set_fmt_str_lengths(len(df)) works below
+            results["identity_weight"].append(setting.get("identity_weight", None))
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
             results["num_tries"].append(num_tries)
             results["num_steps"].append(num_steps)
