@@ -633,7 +633,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
         'vanilla': [{}],
         'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
         'hercules': [{'use_out_proj': True}, {'use_out_proj': False}],
-        'zeus': [{'identity_weight': iw} for iw in [0.01, 0.3, 0.5, 0.7, 0.99]],
+        'zeus': [{'identity_weight': iw} for iw in [0.0, 0.1, 0.5, 0.9, 1.0]],
     }
 
     results = {
