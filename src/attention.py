@@ -280,7 +280,6 @@ class Hercules(nn.Module):
             norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
-            identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
@@ -290,7 +289,6 @@ class Hercules(nn.Module):
         self.norm = norm
         self.device = device
         self.dtype = dtype
-        self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
@@ -298,7 +296,6 @@ class Hercules(nn.Module):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
         A = torch.sum(self.feature_map(K) * self.feature_map(V), dim=-2)
-        A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
         Y = self.out_proj(Y)
         Z = Y + X
@@ -318,7 +315,6 @@ class HerculesCausal(nn.Module):
             norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
-            identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
@@ -328,7 +324,6 @@ class HerculesCausal(nn.Module):
         self.norm = norm
         self.device = device
         self.dtype = dtype
-        self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
@@ -336,7 +331,6 @@ class HerculesCausal(nn.Module):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
         A = torch.cumsum(self.feature_map(K) * self.feature_map(V), dim=-2)
-        A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
         Y = self.out_proj(Y)
         Z = Y + X
