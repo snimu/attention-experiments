@@ -40,6 +40,7 @@ class Vanilla(nn.Module):
             self, 
             feature_dim: int, 
             heads: int, 
+            norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
@@ -48,6 +49,7 @@ class Vanilla(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.heads = heads
+        self.norm = norm
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype)
 
@@ -58,7 +60,7 @@ class Vanilla(nn.Module):
         dim_per_head = feature_dim // self.heads
         assert dim_per_head % 2 == 0
 
-        Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
 
         Q = Q.view(batch_size, seq_len, self.heads, dim_per_head)
         K = K.view(batch_size, seq_len, self.heads, dim_per_head)
@@ -91,6 +93,7 @@ class VanillaCausal(nn.Module):
             self, 
             feature_dim: int, 
             heads: int,
+            norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
@@ -101,6 +104,7 @@ class VanillaCausal(nn.Module):
         self.dtype = dtype
         self.feature_dim = feature_dim
         self.heads = heads
+        self.norm = norm
         self.seq_len = 32  # initial sequence length from training --- updated in forward
         self.mask = self.update_mask(self.seq_len)
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
@@ -121,7 +125,7 @@ class VanillaCausal(nn.Module):
         dim_per_head = feature_dim // self.heads
         assert dim_per_head % 2 == 0
 
-        Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
 
         Q = Q.view(batch_size, seq_len, self.heads, dim_per_head)
         K = K.view(batch_size, seq_len, self.heads, dim_per_head)
@@ -170,6 +174,7 @@ class Hydra(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
+            norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
@@ -178,11 +183,12 @@ class Hydra(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.feature_map = feature_map
+        self.norm = norm
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
-        Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         Q, K = embed_rotary(Q, K, dim=self.feature_dim)
         A = torch.sum(feature_map(K) * V, dim=-2)
         Y = A * Q
@@ -195,6 +201,7 @@ class HydraCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
+            norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
@@ -203,11 +210,12 @@ class HydraCausal(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.feature_map = feature_map
+        self.norm = norm
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
-        Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         Q, K = embed_rotary(Q, K, dim=self.feature_dim)
         A = torch.cumsum(feature_map(K) * V, dim=-2)  # cumsum means causal
         Y = A * self.feature_map(Q)
@@ -226,6 +234,7 @@ class Hercules(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
+            norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             identity_weight: float = 0.5,
@@ -235,12 +244,13 @@ class Hercules(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.feature_map = feature_map
+        self.norm = norm
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
-        Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
@@ -260,6 +270,7 @@ class HerculesCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
+            norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             identity_weight: float = 0.5,
@@ -269,12 +280,13 @@ class HerculesCausal(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.feature_map = feature_map
+        self.norm = norm
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
-        Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
@@ -294,6 +306,7 @@ class Zeus(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
+            norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
@@ -302,11 +315,12 @@ class Zeus(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.feature_map = feature_map
+        self.norm = norm
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor):
-        K, V = self.in_proj(X).chunk(2, dim=-1)
+        K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
@@ -322,6 +336,7 @@ class ZeusCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
+            norm: nn.Module,
             feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
@@ -330,11 +345,12 @@ class ZeusCausal(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.feature_map = feature_map
+        self.norm = norm
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor):
-        K, V = self.in_proj(X).chunk(2, dim=-1)
+        K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
