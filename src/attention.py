@@ -192,7 +192,7 @@ class Hydra(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.sum(feature_map(K) * V, dim=-2)
+        A = torch.sum(self.feature_map(K) * V, dim=-2)
         Y = A * Q
         Y = self.out_proj(Y)
         Z = Y + X
@@ -221,7 +221,7 @@ class HydraCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.cumsum(feature_map(K) * V, dim=-2)  # cumsum means causal
+        A = torch.cumsum(self.feature_map(K) * V, dim=-2)  # cumsum means causal
         Y = A * self.feature_map(Q)
         Y = self.out_proj(Y)
         Z = Y + X
@@ -258,7 +258,7 @@ class Hercules(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
+        A = torch.sum(self.feature_map(K) * self.feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
         Y = self.out_proj(Y)
@@ -296,7 +296,7 @@ class HerculesCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
+        A = torch.cumsum(self.feature_map(K) * self.feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
         Y = self.out_proj(Y)
@@ -332,7 +332,7 @@ class Zeus(nn.Module):
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
+        A = torch.sum(self.feature_map(K) * self.feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
         Z = A * X
         return Z
@@ -364,7 +364,7 @@ class ZeusCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
+        A = torch.cumsum(self.feature_map(K) * self.feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
         Z = A * X
         return Z
