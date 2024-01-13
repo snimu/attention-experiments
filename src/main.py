@@ -622,6 +622,7 @@ def train_and_eval(num_tries = 5):
 
     for attn_type in settings.keys():
         for setting in settings[attn_type]:
+            print(f"\n\nStarting training with attention type: {attn_type}, and setting: {setting}\n\n")
             val_loss_list = []
             for _ in range(num_tries):
                 _, val_loss = train(num_steps=1000, attn_type=attn_type, **setting)
@@ -630,7 +631,7 @@ def train_and_eval(num_tries = 5):
             results["setting"].append(str(setting))
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
             results["num_tries"].append(num_tries)
-            print(f"Finished training with attention type: {attn_type}, and setting: {setting}")
+            print(f"\n\nDONE!!!\n\n")
 
 
 if __name__ == '__main__':
