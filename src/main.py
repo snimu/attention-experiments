@@ -642,8 +642,8 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
             results["num_steps"].append(num_steps)
             rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
 
-    rich.print(results)
     df = pl.DataFrame(results)
+    print(df)
     df.to_csv("results.csv")
 
 
