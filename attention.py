@@ -5,6 +5,8 @@ All are implemented as self-attention only.
 All have a causal and an a-causal version. 
 No explicit masking is done, but the causal versions are implemented as such.
 This is because I want this to be simple and comparable, and for torch.compile to make it fast.
+
+They are also written for training, because that's what I'm interested in.
 """
 
 from typing import Callable
@@ -20,7 +22,13 @@ def embed_rotary(*args: torch.Tensor, dim: int) -> list[torch.Tensor]:
 
 
 class Vanilla(nn.Module):
-    """Acausal Vanilla Attention"""
+    """
+    Acausal Vanilla Attention.
+    
+    Doesn't use nn.MultiheadAttention, 
+    because I don't have efficient implementations of the other Attention mechanisms
+    but still want them to be comparable.
+    """
     def __init__(self, feature_dim: int, heads: int):
         assert feature_dim % heads == 0
         assert feature_dim % 2 == 0
@@ -72,16 +80,18 @@ class VanillaCausal(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.heads = heads
+        self.seq_len = 32  # initial sequence length from training --- updated in forward
+        self.mask = torch.tril(torch.ones(self.seq_len, self.seq_len), diagonal=0)
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
         self.out_proj = nn.Linear(feature_dim, feature_dim)
-
-    def make_causal(self, scores: torch.Tensor, seq_len: int) -> torch.Tensor:
-        mask = torch.tril(torch.ones(seq_len, seq_len), diagonal=0)
-        return scores.masked_fill(mask == 0, -1e9)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """Q, K, V: (batch, seq_len, dim)"""
         batch_size, seq_len, feature_dim = X.size()
+        if seq_len != self.seq_len:
+            self.mask = torch.tril(torch.ones(seq_len, seq_len), diagonal=0)
+            self.seq_len = seq_len
+
         assert feature_dim == self.feature_dim
         dim_per_head = feature_dim // self.heads
         assert dim_per_head % 2 == 0
@@ -100,7 +110,7 @@ class VanillaCausal(nn.Module):
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(dim_per_head)
-        scores = self.make_causal(scores, seq_len)
+        scores = scores.masked_fill(self.mask == 0, -1e9)
 
         scores = torch.softmax(scores, dim=-1)
         # (batch, heads, seq_len, dim_per_head)
