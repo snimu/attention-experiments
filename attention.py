@@ -11,23 +11,31 @@ from typing import Callable
 
 import torch 
 from torch import nn 
+from rotary_embedding_torch import RotaryEmbedding
+
+
+def embed_rotary(*args: torch.Tensor, dim: int) -> list[torch.Tensor]:
+    rot_emb = RotaryEmbedding(dim // 2)  # rotary embedding is half the size of the dim
+    return [rot_emb.rotate_queries_or_keys(arg) for arg in args]
 
 
 class Vanilla(nn.Module):
     """Acausal Vanilla Attention"""
-    def __init__(self, dim: int, heads: int):
+    def __init__(self, feature_dim: int, heads: int):
+        assert feature_dim % heads == 0
+        assert feature_dim % 2 == 0
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.heads = heads
-        self.in_proj = nn.Linear(dim, int(dim * 3))
-        self.out_proj = nn.Linear(dim, dim)
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
+        self.out_proj = nn.Linear(feature_dim, feature_dim)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """Q, K, V: (batch, seq_len, dim)"""
-        batch_size, seq_len, dim = X.size()
-        assert dim == self.dim
-        assert dim % self.heads == 0
-        dim_per_head = dim // self.heads
+        batch_size, seq_len, feature_dim = X.size()
+        assert feature_dim == self.feature_dim
+        dim_per_head = feature_dim // self.heads
+        assert dim_per_head % 2 == 0
 
         Q, K, V = self.in_proj(X).chunk(3, dim=-1)
 
@@ -38,6 +46,8 @@ class Vanilla(nn.Module):
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
+
+        Q, K = embed_rotary(Q, K, dim=dim_per_head)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(dim_per_head)
@@ -48,7 +58,7 @@ class Vanilla(nn.Module):
         # (batch, seq_len, heads, dim_per_head)
         context = context.transpose(1, 2)
         # (batch, seq_len, dim)
-        context = context.reshape(batch_size, seq_len, dim)
+        context = context.reshape(batch_size, seq_len, feature_dim)
         context = self.out_proj(context)
         context = context + X
         return context
@@ -56,12 +66,14 @@ class Vanilla(nn.Module):
 
 class VanillaCausal(nn.Module):
     """Causal Vanilla Attention"""
-    def __init__(self, dim: int, heads: int):
+    def __init__(self, feature_dim: int, heads: int):
+        assert feature_dim % heads == 0
+        assert feature_dim % 2 == 0
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.heads = heads
-        self.in_proj = nn.Linear(dim, int(dim * 3))
-        self.out_proj = nn.Linear(dim, dim)
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
+        self.out_proj = nn.Linear(feature_dim, feature_dim)
 
     def make_causal(self, scores: torch.Tensor, seq_len: int) -> torch.Tensor:
         mask = torch.tril(torch.ones(seq_len, seq_len), diagonal=0)
@@ -69,10 +81,10 @@ class VanillaCausal(nn.Module):
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """Q, K, V: (batch, seq_len, dim)"""
-        batch_size, seq_len, dim = X.size()
-        assert dim == self.dim
-        assert dim % self.heads == 0
-        dim_per_head = dim // self.heads
+        batch_size, seq_len, feature_dim = X.size()
+        assert feature_dim == self.feature_dim
+        dim_per_head = feature_dim // self.heads
+        assert dim_per_head % 2 == 0
 
         Q, K, V = self.in_proj(X).chunk(3, dim=-1)
 
@@ -83,6 +95,8 @@ class VanillaCausal(nn.Module):
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
+
+        Q, K = embed_rotary(Q, K, dim=dim_per_head)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(dim_per_head)
@@ -94,7 +108,7 @@ class VanillaCausal(nn.Module):
         # (batch, seq_len, heads, dim_per_head)
         context = context.transpose(1, 2)
         # (batch, seq_len, dim)
-        context = context.reshape(batch_size, seq_len, dim)
+        context = context.reshape(batch_size, seq_len, feature_dim)
         context = self.out_proj(context)
         context = context + X
         return context
@@ -120,18 +134,19 @@ class Hydra(nn.Module):
     """
     def __init__(
             self, 
-            dim: int, 
+            feature_dim: int, 
             feature_map: Callable[[torch.Tensor], torch.Tensor],
             use_out_proj: bool = True,
     ):
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.feature_map = feature_map
-        self.in_proj = nn.Linear(dim, int(dim * 3))
-        self.out_proj = nn.Linear(dim, dim) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
+        self.out_proj = nn.Linear(feature_dim, feature_dim) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K = embed_rotary(Q, K, dim=self.feature_dim)
         A = torch.sum(feature_map(K) * V, dim=-2)
         Y = A * Q
         Y = self.out_proj(Y)
@@ -142,18 +157,19 @@ class Hydra(nn.Module):
 class HydraCausal(nn.Module):
     def __init__(
             self, 
-            dim: int, 
+            feature_dim: int, 
             feature_map: Callable[[torch.Tensor], torch.Tensor],
             use_out_proj: bool = True,
     ):
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.feature_map = feature_map
-        self.in_proj = nn.Linear(dim, int(dim * 3))
-        self.out_proj = nn.Linear(dim, dim) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
+        self.out_proj = nn.Linear(feature_dim, feature_dim) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        Q, K = embed_rotary(Q, K, dim=self.feature_dim)
         A = torch.cumsum(feature_map(K) * V, dim=-2)  # cumsum means causal
         Y = A * self.feature_map(Q)
         Y = self.out_proj(Y)
@@ -169,20 +185,22 @@ class Hercules(nn.Module):
     """
 
     def __init__(
-            self, dim: int, 
+            self, 
+            feature_dim: int, 
             feature_map: Callable[[torch.Tensor], torch.Tensor],
             use_out_proj: bool = True,
             identity_weight: float = 0.5,
     ):
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(dim, int(dim * 3))
-        self.out_proj = nn.Linear(dim, dim) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
+        self.out_proj = nn.Linear(feature_dim, feature_dim) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
@@ -199,20 +217,22 @@ class HerculesCausal(nn.Module):
     """
 
     def __init__(
-            self, dim: int, 
+            self, 
+            feature_dim: int, 
             feature_map: Callable[[torch.Tensor], torch.Tensor],
             use_out_proj: bool = True,
             identity_weight: float = 0.5,
     ):
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(dim, int(dim * 3))
-        self.out_proj = nn.Linear(dim, dim) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3))
+        self.out_proj = nn.Linear(feature_dim, feature_dim) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(X).chunk(3, dim=-1)
+        K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
@@ -229,18 +249,20 @@ class Zeus(nn.Module):
     """
 
     def __init__(
-            self, dim: int, 
+            self, 
+            feature_dim: int, 
             feature_map: Callable[[torch.Tensor], torch.Tensor],
             identity_weight: float = 0.5,
     ):
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(dim, int(dim * 2))
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2))
 
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(X).chunk(2, dim=-1)
+        K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
         Z = A * X
@@ -253,18 +275,20 @@ class ZeusCausal(nn.Module):
     """
 
     def __init__(
-            self, dim: int, 
+            self, 
+            feature_dim: int, 
             feature_map: Callable[[torch.Tensor], torch.Tensor],
             identity_weight: float = 0.5,
     ):
         super().__init__()
-        self.dim = dim
+        self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(dim, int(dim * 2))
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2))
 
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(X).chunk(2, dim=-1)
+        K, V = embed_rotary(K, V, dim=self.feature_dim)
         A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
         Z = A * X
