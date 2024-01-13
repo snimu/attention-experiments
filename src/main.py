@@ -31,6 +31,8 @@ from torch import nn
 # This seems like one of the best choices right now for a fast/lightweight/simple tokenizer.
 import tiktoken
 
+import attention
+
 # Check if we're using pytorch 2 for those speedups
 using_pytorch_2 = (int(torch.__version__.split('.')[0]) >= 2)
 if not using_pytorch_2:
@@ -179,6 +181,46 @@ class AttentionBlock(nn.Module):
         x = x + residual # haiku
         return x
 
+
+def create_attention(attn_type, **kwargs):  # kwargs for things that I actually want to vary across experiments
+    if attn_type == "vanilla":
+        attn = attention.VanillaCausal(
+            feature_dim=hyp['net']['residual_depth'],
+            num_heads=hyp['net']['num_heads'],
+            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            device=hyp['misc']['device'],
+            dtype=hyp['misc']['dtype'],
+        )
+    elif attn_type == "hydra":
+        attn = attention.HydraCausal(
+            feature_dim=hyp['net']['residual_depth'],
+            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            device=hyp['misc']['device'],
+            dtype=hyp['misc']['dtype'],
+            **kwargs,
+        )
+    elif attn_type == "hercules":
+        attn = attention.HerculesCausal(
+            feature_dim=hyp['net']['residual_depth'],
+            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            device=hyp['misc']['device'],
+            dtype=hyp['misc']['dtype'],
+            **kwargs,
+        )
+    elif attn_type == "zeus":
+        attn = attention.ZeusCausal(
+            feature_dim=hyp['net']['residual_depth'],
+            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            device=hyp['misc']['device'],
+            dtype=hyp['misc']['dtype'],
+            **kwargs,
+        )
+    else:
+        raise ValueError(f"Unrecognized attention type: {attn_type}")
+
+    return attn
+
+
 class SiGLU(nn.Module):
     """ Implements the SiLU-gated linear unit from that one gated linear units paper. Assumes the channel tensors are stacked. """
     def __init__(self):
@@ -234,13 +276,13 @@ class SpeedyLangNet(nn.Module):
         x = self.net_dict['outputs'](x)
         return x
 
-def make_net():
+def make_net(attn_type: str, **kwargs):
     # Note, you have to specify any arguments overlapping with defaults (i.e. everything but in/out depths) as kwargs so that they are properly overridden (TODO cleanup somehow?)
     network_dict = nn.ModuleDict({
         'embedding': nn.Embedding(hyp['misc']['num_tokens'], hyp['net']['residual_depth'], scale_grad_by_freq=True),
         'norm': LayerNorm(hyp['net']['residual_depth'], bias=False),
         'mlp_layers': nn.ModuleList([MLPBlock(hyp['net']['residual_depth']) for _ in range(hyp['net']['num_blocks'])]),
-        'attn_layers': nn.ModuleList([AttentionBlock(hyp['net']['residual_depth'], hyp['misc']['sequence_length']['max'], hyp['net']['num_heads']) for _ in range(hyp['net']['num_blocks'])]),
+        'attn_layers': nn.ModuleList([create_attention(attn_type, **kwargs) for _ in range(hyp['net']['num_blocks'])]),
         'outputs': nn.Linear(hyp['net']['residual_depth'], hyp['misc']['num_tokens'], bias=False),
     })
 
