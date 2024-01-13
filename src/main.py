@@ -485,7 +485,7 @@ def train(num_steps, attn_type, **kwargs):
     total_microbatch_steps = hyp['opt']['total_train_steps'] * hyp['opt']['initial_accumulate_steps'] # BUG: Since we have dynamic virtual batchsize scaling now, we're going to have to rewrite the dataloader to appropriately handle it now.    
 
     # Get network
-    net = make_net()
+    net = make_net(attn_type, **kwargs)
 
     ## Stowing the creation of these into a helper function to make things a bit more readable....
     params_non_decay, params_decay = init_split_parameter_dictionaries(net)
