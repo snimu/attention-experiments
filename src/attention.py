@@ -28,7 +28,7 @@ def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
     return X / torch.linalg.norm(X, dim=-1, keepdim=True)
 
 
-class TorchCausal(nn.Module):
+class TorchMHACausal(nn.Module):
     def __init__(
             self,
             feature_dim: int,
