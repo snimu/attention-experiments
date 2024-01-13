@@ -184,6 +184,8 @@ class Hydra(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
+        self.device = device
+        self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
@@ -211,6 +213,8 @@ class HydraCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
+        self.device = device
+        self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
@@ -245,6 +249,8 @@ class Hercules(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
+        self.device = device
+        self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
@@ -281,6 +287,8 @@ class HerculesCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
+        self.device = device
+        self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
@@ -316,6 +324,8 @@ class Zeus(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
+        self.device = device
+        self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), bias=False, device=device, dtype=dtype)
 
@@ -346,6 +356,8 @@ class ZeusCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
+        self.device = device
+        self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), bias=False, device=device, dtype=dtype)
 
