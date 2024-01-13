@@ -627,10 +627,10 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
     }
 
     results = {
+        "avg_val_loss": [],
         "attn_type": [],
         "use_out_proj": [],
         "identity_weight": [],
-        "avg_val_loss": [],
         "num_tries": [],
         "num_steps": [],
     }
@@ -645,17 +645,18 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
                 rich.print(f"\n\nStarting training run {idx+1} of {num_tries} for {attn_type=}, {setting=}\n\n")
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 val_loss_list.append(val_loss)
-            results["attn_type"].append(attn_type)
-            results["use_out_proj"].append(str(setting.get("use_out_proj", False)))  # str so that pl.Config.set_fmt_str_lengths(len(df)) works below
-            results["identity_weight"].append(setting.get("identity_weight", None))
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
+            results["attn_type"].append(attn_type)
+            results["use_out_proj"].append(setting.get("use_out_proj", False))
+            results["identity_weight"].append(setting.get("identity_weight", None))
             results["num_tries"].append(num_tries)
             results["num_steps"].append(num_steps)
             rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
 
     df = pl.DataFrame(results)
-    pl.Config.set_fmt_str_lengths(len(df))  # so that all rows are printed
-    print(df)
+    rich.print(str(df.columns))
+    for row in df.iter_rows():
+        rich.print(str(row))
     df.write_csv("results.csv")
 
 
