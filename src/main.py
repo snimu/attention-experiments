@@ -187,7 +187,9 @@ class AttentionBlock(nn.Module):
 
 
 def create_attention(attn_type, **kwargs):  # kwargs for things that I actually want to vary across experiments
-    if attn_type == "torchMHA":
+    if attn_type == "identity":
+        attn = torch.nn.Identity()
+    elif attn_type == "torchMHA":
         attn = attention.TorchMHACausal(
             feature_dim=hyp['net']['residual_depth'],
             num_heads=hyp['net']['num_heads'],
@@ -619,6 +621,7 @@ def train(num_steps, attn_type, **kwargs):
 
 def train_and_eval(hyp, num_tries=5, num_steps=500):
     settings = {
+        'identity': [{}],
         'torchMHA': [{}],
         'vanilla': [{}],
         'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
