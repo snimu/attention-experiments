@@ -39,16 +39,16 @@ class Vanilla(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            heads: int, 
+            num_heads: int, 
             norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
-        assert feature_dim % heads == 0
+        assert feature_dim % num_heads == 0
         assert feature_dim % 2 == 0
         super().__init__()
         self.feature_dim = feature_dim
-        self.heads = heads
+        self.num_heads = num_heads
         self.norm = norm
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype)
@@ -57,14 +57,14 @@ class Vanilla(nn.Module):
         """Q, K, V: (batch, seq_len, dim)"""
         batch_size, seq_len, feature_dim = X.size()
         assert feature_dim == self.feature_dim
-        dim_per_head = feature_dim // self.heads
+        dim_per_head = feature_dim // self.num_heads
         assert dim_per_head % 2 == 0
 
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
 
-        Q = Q.view(batch_size, seq_len, self.heads, dim_per_head)
-        K = K.view(batch_size, seq_len, self.heads, dim_per_head)
-        V = V.view(batch_size, seq_len, self.heads, dim_per_head)
+        Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
+        K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
+        V = V.view(batch_size, seq_len, self.num_heads, dim_per_head)
 
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
@@ -92,18 +92,18 @@ class VanillaCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            heads: int,
+            num_heads: int,
             norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
-        assert feature_dim % heads == 0
+        assert feature_dim % num_heads == 0
         assert feature_dim % 2 == 0
         super().__init__()
         self.device = device
         self.dtype = dtype
         self.feature_dim = feature_dim
-        self.heads = heads
+        self.num_heads = num_heads
         self.norm = norm
         self.seq_len = 32  # initial sequence length from training --- updated in forward
         self.mask = self.update_mask(self.seq_len)
@@ -122,14 +122,14 @@ class VanillaCausal(nn.Module):
             self.update_mask(seq_len)
 
         assert feature_dim == self.feature_dim
-        dim_per_head = feature_dim // self.heads
+        dim_per_head = feature_dim // self.num_heads
         assert dim_per_head % 2 == 0
 
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
 
-        Q = Q.view(batch_size, seq_len, self.heads, dim_per_head)
-        K = K.view(batch_size, seq_len, self.heads, dim_per_head)
-        V = V.view(batch_size, seq_len, self.heads, dim_per_head)
+        Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
+        K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
+        V = V.view(batch_size, seq_len, self.num_heads, dim_per_head)
 
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
