@@ -3,3 +3,4 @@ torchvision
 tiktoken
 rotary-embedding-torch
 rich
+polars

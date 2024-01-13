@@ -29,6 +29,7 @@ import rich
 import torch
 import torch.nn.functional as F
 from torch import nn
+import polars as pl
 
 # This seems like one of the best choices right now for a fast/lightweight/simple tokenizer.
 import tiktoken
@@ -639,6 +640,8 @@ def train_and_eval(hyp, num_tries = 5):
             rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
 
     rich.print(results)
+    df = pl.DataFrame(results)
+    df.to_csv("results.csv")
 
 
 if __name__ == '__main__':
