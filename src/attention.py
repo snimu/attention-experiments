@@ -138,7 +138,7 @@ class VanillaCausal(nn.Module):
         Q, K = embed_rotary(Q, K, dim=dim_per_head, device=self.device)
 
         # (batch, heads, seq_len, dim_per_head)
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(dim_per_head)
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim_per_head))
         scores = scores.masked_fill(self.mask == 0, -1e9)
 
         scores = torch.softmax(scores, dim=-1)
