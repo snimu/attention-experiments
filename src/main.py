@@ -621,6 +621,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
         "setting": [],
         "avg_val_loss": [],
         "num_tries": [],
+        "num_steps": [],
     }
 
     hyp_init = copy.deepcopy(hyp)
@@ -637,6 +638,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
             results["setting"].append(str(setting))
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
             results["num_tries"].append(num_tries)
+            results["num_steps"].append(num_steps)
             rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
 
     rich.print(results)
