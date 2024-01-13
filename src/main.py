@@ -24,6 +24,7 @@ import urllib
 import zipfile
 import os
 
+import rich
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -622,16 +623,19 @@ def train_and_eval(num_tries = 5):
 
     for attn_type in settings.keys():
         for setting in settings[attn_type]:
-            print(f"\n\nStarting training with attention type: {attn_type}, and setting: {setting}\n\n")
+            rich.print(f"\n\nStarting training with attention type: {attn_type}, and setting: {setting}\n\n")
             val_loss_list = []
-            for _ in range(num_tries):
+            for idx in range(num_tries):
+                rich.print(f"\n\nStarting training run {idx+1} of {num_tries} for {attn_type=}, {setting=}\n\n")
                 _, val_loss = train(num_steps=1000, attn_type=attn_type, **setting)
                 val_loss_list.append(val_loss)
             results["attn_type"].append(attn_type)
             results["setting"].append(str(setting))
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
             results["num_tries"].append(num_tries)
-            print(f"\n\nDONE!!!\n\n")
+            rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
+
+    rich.print(results)
 
 
 if __name__ == '__main__':
