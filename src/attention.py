@@ -19,9 +19,9 @@ from rotary_embedding_torch import RotaryEmbedding
 DEVICE_TYPE = Union[str, int, torch.device]
 
 
-def embed_rotary(*args: torch.Tensor, dim: int) -> list[torch.Tensor]:
+def embed_rotary(*args: torch.Tensor, dim: int, device="cuda") -> list[torch.Tensor]:
     rot_emb = RotaryEmbedding(dim // 2)  # rotary embedding is half the size of the dim
-    return [rot_emb.rotate_queries_or_keys(arg) for arg in args]
+    return [rot_emb.rotate_queries_or_keys(arg.cpu()).to(device) for arg in args]  # TODO: why does this not work on CUDA?
 
 
 def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
@@ -70,7 +70,7 @@ class Vanilla(nn.Module):
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
 
-        Q, K = embed_rotary(Q, K, dim=dim_per_head)
+        Q, K = embed_rotary(Q, K, dim=dim_per_head, device=self.device)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(dim_per_head)
@@ -135,7 +135,7 @@ class VanillaCausal(nn.Module):
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
 
-        Q, K = embed_rotary(Q, K, dim=dim_per_head)
+        Q, K = embed_rotary(Q, K, dim=dim_per_head, device=self.device)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(dim_per_head)
@@ -189,7 +189,7 @@ class Hydra(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        Q, K = embed_rotary(Q, K, dim=self.feature_dim)
+        Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device)
         A = torch.sum(feature_map(K) * V, dim=-2)
         Y = A * Q
         Y = self.out_proj(Y)
@@ -216,7 +216,7 @@ class HydraCausal(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        Q, K = embed_rotary(Q, K, dim=self.feature_dim)
+        Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device)
         A = torch.cumsum(feature_map(K) * V, dim=-2)  # cumsum means causal
         Y = A * self.feature_map(Q)
         Y = self.out_proj(Y)
@@ -251,7 +251,7 @@ class Hercules(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim)
+        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device)
         A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
@@ -287,7 +287,7 @@ class HerculesCausal(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim)
+        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device)
         A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight
         Y = A * Q
@@ -321,7 +321,7 @@ class Zeus(nn.Module):
 
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim)
+        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device)
         A = torch.sum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
         Z = A * X
@@ -351,7 +351,7 @@ class ZeusCausal(nn.Module):
 
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim)
+        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device)
         A = torch.cumsum(feature_map(K) * feature_map(V), dim=-2)
         A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
         Z = A * X
