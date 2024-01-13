@@ -111,7 +111,7 @@ class VanillaCausal(nn.Module):
         self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype)
 
     def update_mask(self, seq_len: int) -> torch.Tensor:
-        self.mask = torch.tril(torch.ones(seq_len, seq_len, device=self.device, dtype=self.dtype), diagonal=0)
+        self.mask = torch.tril(torch.ones(seq_len, seq_len, dtype=self.dtype), diagonal=0).to(self.device)
         self.seq_len = seq_len
         return self.mask
 
