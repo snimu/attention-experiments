@@ -652,6 +652,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
             rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
 
     df = pl.DataFrame(results)
+    pl.Config.set_fmt_str_lengths(len(df))  # so that all rows are printed
     print(df)
     df.write_csv("results.csv")
 
