@@ -607,7 +607,7 @@ def train(num_steps, attn_type, **kwargs):
     return net, val_loss # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
 
 
-def train_and_eval(num_tries = 5):
+def train_and_eval(hyp, num_tries = 5):
     settings = {
         'vanilla': [{}],
         'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
@@ -642,4 +642,4 @@ def train_and_eval(num_tries = 5):
 
 
 if __name__ == '__main__':
-    train_and_eval()
+    train_and_eval(hyp)
