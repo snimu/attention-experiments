@@ -607,7 +607,7 @@ def train(num_steps, attn_type, **kwargs):
 
 def train_and_eval(num_tries = 5):
     settings = {
-        attn_type: {
+        "attn_type": {
             'vanilla': [{}],
             'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
             'hercules': [{'use_out_proj': uop, 'identity_weight': iw} for uop in [True, False] for iw in [0.3, 0.5, 0.7]],
