@@ -653,7 +653,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
 
     df = pl.DataFrame(results)
     print(df)
-    df.to_csv("results.csv")
+    df.write_csv("results.csv")
 
 
 def get_args() -> argparse.Namespace:
