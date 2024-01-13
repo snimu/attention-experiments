@@ -18,6 +18,7 @@ try:
 except NameError:
   pass ## we're still good
 """
+import argparse
 import copy
 import functools
 from functools import partial
@@ -646,5 +647,17 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
     df.to_csv("results.csv")
 
 
+def get_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num_tries", type=int, default=5)
+    parser.add_argument("--num_steps", type=int, default=500)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = get_args()
+    train_and_eval(hyp, num_tries=args.num_tries, num_steps=args.num_steps)
+
+
 if __name__ == '__main__':
-    train_and_eval(hyp)
+    main()
