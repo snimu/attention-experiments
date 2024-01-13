@@ -28,6 +28,45 @@ def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
     return X / torch.linalg.norm(X, dim=-1, keepdim=True)
 
 
+class TorchCausal(nn.Module):
+    def __init__(
+            self,
+            feature_dim: int,
+            num_heads: int,
+            norm: nn.Module,
+            device: DEVICE_TYPE = 'cuda',
+            dtype: torch.dtype = torch.bfloat16,
+    ):
+        super().__init__()
+        self.feature_dim = feature_dim
+        self.num_heads = num_heads
+        self.norm = norm
+        self.device = device
+        self.dtype = dtype
+        self.mha = nn.MultiheadAttention(feature_dim, num_heads, dropout=0.0, bias=False, device=device, dtype=dtype)
+        self.seq_len = 32
+        self.mask = self.update_mask(self.seq_len)
+
+    def update_mask(self, seq_len: int) -> torch.Tensor:
+        self.mask = torch.triu(torch.ones(seq_len, seq_len, dtype=self.dtype), diagonal=1).to(self.device)
+        self.seq_len = seq_len
+        return self.mask
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        _, seq_len, feature_dim = X.size()
+        if seq_len != self.seq_len:
+            self.update_mask(seq_len)
+        assert feature_dim == self.feature_dim
+
+        residual = X
+        X = self.norm(X)
+        X = X.permute(1, 0, 2)
+        X = self.mha(X, X, X, attn_mask=self.mask, need_weights=False)[0]
+        X = X.permute(1, 0, 2)
+        X = X + residual
+        return X
+
+
 class Vanilla(nn.Module):
     """
     Acausal Vanilla Attention.

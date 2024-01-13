@@ -187,7 +187,15 @@ class AttentionBlock(nn.Module):
 
 
 def create_attention(attn_type, **kwargs):  # kwargs for things that I actually want to vary across experiments
-    if attn_type == "vanilla":
+    if attn_type == "torch":
+        attn = attention.TorchCausal(
+            feature_dim=hyp['net']['residual_depth'],
+            num_heads=hyp['net']['num_heads'],
+            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            device=hyp['misc']['device'],
+            dtype=hyp['misc']['dtype'],
+        )
+    elif attn_type == "vanilla":
         attn = attention.VanillaCausal(
             feature_dim=hyp['net']['residual_depth'],
             num_heads=hyp['net']['num_heads'],
@@ -611,6 +619,7 @@ def train(num_steps, attn_type, **kwargs):
 
 def train_and_eval(hyp, num_tries=5, num_steps=500):
     settings = {
+        'torch': [{}],
         'vanilla': [{}],
         'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
         'hercules': [{'use_out_proj': uop, 'identity_weight': iw} for uop in [True, False] for iw in [0.01, 0.3, 0.5, 0.7, 0.99]],
