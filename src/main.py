@@ -608,7 +608,7 @@ def train(num_steps, attn_type, **kwargs):
     return net, val_loss # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
 
 
-def train_and_eval(hyp, num_tries = 5):
+def train_and_eval(hyp, num_tries=5, num_steps=500):
     settings = {
         'vanilla': [{}],
         'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
@@ -631,7 +631,7 @@ def train_and_eval(hyp, num_tries = 5):
             val_loss_list = []
             for idx in range(num_tries):
                 rich.print(f"\n\nStarting training run {idx+1} of {num_tries} for {attn_type=}, {setting=}\n\n")
-                _, val_loss = train(num_steps=1000, attn_type=attn_type, **setting)
+                _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 val_loss_list.append(val_loss)
             results["attn_type"].append(attn_type)
             results["setting"].append(str(setting))
