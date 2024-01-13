@@ -18,6 +18,7 @@ try:
 except NameError:
   pass ## we're still good
 """
+import copy
 import functools
 from functools import partial
 import urllib
@@ -621,8 +622,10 @@ def train_and_eval(num_tries = 5):
         "num_tries": [],
     }
 
+    hyp_init = copy.deepcopy(hyp)
     for attn_type in settings.keys():
         for setting in settings[attn_type]:
+            hyp = copy.deepcopy(hyp_init)
             rich.print(f"\n\nStarting training with attention type: {attn_type}, and setting: {setting}\n\n")
             val_loss_list = []
             for idx in range(num_tries):
