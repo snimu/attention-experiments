@@ -50,8 +50,8 @@ class Vanilla(nn.Module):
         self.feature_dim = feature_dim
         self.num_heads = num_heads
         self.norm = norm
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype)
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """Q, K, V: (batch, seq_len, dim)"""
@@ -107,8 +107,8 @@ class VanillaCausal(nn.Module):
         self.norm = norm
         self.seq_len = 32  # initial sequence length from training --- updated in forward
         self.mask = self.update_mask(self.seq_len)
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype)
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype)
 
     def update_mask(self, seq_len: int) -> torch.Tensor:
         self.mask = torch.tril(torch.ones(seq_len, seq_len, dtype=self.dtype), diagonal=0).to(self.device)
@@ -184,8 +184,8 @@ class Hydra(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -211,8 +211,8 @@ class HydraCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map = feature_map
         self.norm = norm
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -246,8 +246,8 @@ class Hercules(nn.Module):
         self.feature_map = feature_map
         self.norm = norm
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -282,8 +282,8 @@ class HerculesCausal(nn.Module):
         self.feature_map = feature_map
         self.norm = norm
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -317,7 +317,7 @@ class Zeus(nn.Module):
         self.feature_map = feature_map
         self.norm = norm
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), device=device, dtype=dtype)
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), bias=False, device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
@@ -347,7 +347,7 @@ class ZeusCausal(nn.Module):
         self.feature_map = feature_map
         self.norm = norm
         self.identity_weight = identity_weight
-        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), device=device, dtype=dtype)
+        self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), bias=False, device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
