@@ -187,7 +187,7 @@ class Hydra(nn.Module):
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -216,7 +216,7 @@ class HydraCausal(nn.Module):
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -253,7 +253,7 @@ class Hercules(nn.Module):
         self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
@@ -291,7 +291,7 @@ class HerculesCausal(nn.Module):
         self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
-        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else torch.Identity()
+        self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
