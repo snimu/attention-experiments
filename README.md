@@ -2,6 +2,8 @@
 
 Just me playing around with Attention mechanisms for a bit of learning and fun.
 
+I'll try to compare vanilla softmax Attention to Hydra Attention and two simplified variants of Hydra Attention.
+
 Based mostly on [Fern](https://github.com/tysam-code/)'s 
 [hlb-gpt](https://github.com/tysam-code/hlb-gpt):
 
