@@ -24,6 +24,10 @@ def embed_rotary(*args: torch.Tensor, dim: int) -> list[torch.Tensor]:
     return [rot_emb.rotate_queries_or_keys(arg) for arg in args]
 
 
+def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
+    return X / torch.linalg.norm(X, dim=-1, keepdim=True)
+
+
 class Vanilla(nn.Module):
     """
     Acausal Vanilla Attention.
@@ -166,7 +170,7 @@ class Hydra(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            feature_map: Callable[[torch.Tensor], torch.Tensor],
+            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
@@ -191,7 +195,7 @@ class HydraCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            feature_map: Callable[[torch.Tensor], torch.Tensor],
+            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
@@ -222,7 +226,7 @@ class Hercules(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            feature_map: Callable[[torch.Tensor], torch.Tensor],
+            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
@@ -256,7 +260,7 @@ class HerculesCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            feature_map: Callable[[torch.Tensor], torch.Tensor],
+            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             use_out_proj: bool = True,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
@@ -290,7 +294,7 @@ class Zeus(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            feature_map: Callable[[torch.Tensor], torch.Tensor],
+            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
@@ -318,7 +322,7 @@ class ZeusCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            feature_map: Callable[[torch.Tensor], torch.Tensor],
+            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim_activation,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
