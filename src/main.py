@@ -712,13 +712,15 @@ def train_and_eval(
                 }
                 start_header = (
                     f"\n{attn_type} ({int(setting_num*num_tries+idx+1)}/{int(len(settings)*num_tries)} "
-                    f"setting {setting_num+1}/{len(settings)} "
-                    f"try {idx+1}/{num_tries}) "
+                    f"--- setting {setting_num+1}/{len(settings)} "
+                    f"--- try {idx+1}/{num_tries}) "
                     f"setting={printable_setting} "
                 )
                 rich.print(
+                    f"\n{'-'*len(start_header)}"
                     f"\n{'-'*len(start_header)}{start_header}\n"
                     f"\nSTARTING\n"
+                    f"{'-'*len(start_header)}\n"
                     f"{'-'*len(start_header)}\n"
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
@@ -728,27 +730,27 @@ def train_and_eval(
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
                 train_losses_list.append(train_losses)
-            df = pl.DataFrame(
-                {
-                    "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
-                    "attn_type": attn_type,
-                    "use_out_proj": setting.get("use_out_proj", False),
-                    "identity_weight": setting.get("identity_weight", None),
-                    "feature_map_qkv": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)],
-                    "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
-                    "num_tries": num_tries,
-                    "num_steps": num_steps,
-                    "avg_time_ns": sum(time_list)/len(time_list),
-                    **{
-                        f"val_losses_{i+1}": str(val_losses_list[i])
-                        for i in range(num_tries)
-                    },
-                    **{
-                        f"train_losses_{i+1}": str(train_losses_list[i])
-                        for i in range(num_tries)
-                    },
-                }
-            )
+
+            results = {
+                "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
+                "attn_type": attn_type,
+                "use_out_proj": setting.get("use_out_proj", False),
+                "identity_weight": setting.get("identity_weight", None),
+                "feature_map_qkv": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)],
+                "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
+                "num_tries": num_tries,
+                "num_steps": num_steps,
+                "avg_time_ns": sum(time_list)/len(time_list),
+                **{
+                    f"val_losses_{i+1}": str(val_losses_list[i])
+                    for i in range(num_tries)
+                },
+                **{
+                    f"train_losses_{i+1}": str(train_losses_list[i])
+                    for i in range(num_tries)
+                },
+            }
+            df = pl.DataFrame(results)
 
             if not os.path.exists('results.csv') or (overwrite and attn_num == setting_num == 0):
                 df.write_csv('results.csv')
@@ -760,10 +762,14 @@ def train_and_eval(
                 f"\n{attn_type} "
                 f"(setting {setting_num+1}/{len(settings)}) "
                 f"setting={printable_setting} "
-                f"avg_val_loss={results['avg_val_loss'][-1]:.2f} "
+                f"avg_val_loss={results['avg_val_loss']:.2f} "
             )
             rich.print(
-                f"\n{'-'*len(done_header)}{done_header}\nDONE\n{'-'*len(done_header)}\n"
+                f"\n{'-'*len(done_header)}"
+                f"\n{'-'*len(done_header)}"
+                f"{done_header}\nDONE\n"
+                f"{'-'*len(done_header)}\n"
+                f"{'-'*len(done_header)}\n"
             )
 
     df = pl.read_csv('results.csv')
