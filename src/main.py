@@ -660,7 +660,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
             results["identity_weight"].append(setting.get("identity_weight", None))
             results["num_tries"].append(num_tries)
             results["num_steps"].append(num_steps)
-            rich.print(f"\nDONE!!! {attn_type=}, {setting=}, {num_tries=}, avg_val_loss={results['avg_val_loss'][-1]}\n")
+            rich.print(f"\nDONE!!! {attn_type=}, {setting=}, {num_tries=}, avg_val_loss={results['avg_val_loss'][-1]:.2f}\n")
 
     df = pl.DataFrame(results)
     df = df.sort(by="avg_val_loss")
