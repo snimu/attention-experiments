@@ -738,11 +738,11 @@ def train_and_eval(
                     **{
                         f"val_losses_{i}": val_losses_list[i]
                         for i in range(num_tries)
-                    }
+                    },
                     **{
                         f"train_losses_{i}": train_losses_list[i]
                         for i in range(num_tries)
-                    }
+                    },
                 }
             )
 
