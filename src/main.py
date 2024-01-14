@@ -769,17 +769,9 @@ def train_and_eval(
     df = pl.read_csv('results.csv')
     df = df.sort(by="avg_val_loss")
     rich.print("\n\nSorted Results:\n\n")
-    rich.print(
-        str(col) + "   " 
-        for col in df.columns 
-        if "val_losses" not in str(col) and "train_losses" not in str(col)
-    )
+    rich.print(str(df.columns[:9]))
     for row in df.iter_rows():
-        rich.print(
-            str(item) + "   "
-            for i, item in enumerate(row)
-            if "val_losses" not in str(df.columns[i]) and "train_losses" not in str(df.columns[i])
-        )
+        rich.print(str(row[:9]))
 
 
 def get_args() -> argparse.Namespace:
