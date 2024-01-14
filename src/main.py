@@ -685,6 +685,8 @@ def train_and_eval(
         save: bool,
         overwrite: bool,
 ):
+    if not save:
+        rich.print("\n\nWARNING: Not saving results to disk.\n\n")
     all_properties = ["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"]
     property_to_default = {prop: (False if prop in test_properties else True) for prop in all_properties}
 
@@ -751,11 +753,12 @@ def train_and_eval(
             }
             df = pl.DataFrame(results)
 
-            if not os.path.exists('results.csv') or (overwrite and attn_num == setting_num == 0):
-                df.write_csv('results.csv')
-            else:
-                with open('results.csv', 'ab') as f:
-                    df.write_csv(f, include_header=False)
+            if save:
+                if not os.path.exists('results.csv') or (overwrite and attn_num == setting_num == 0):
+                    df.write_csv('results.csv')
+                else:
+                    with open('results.csv', 'ab') as f:
+                        df.write_csv(f, include_header=False)
 
             done_header = (
                 f"\n{attn_type} "
