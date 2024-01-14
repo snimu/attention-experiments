@@ -563,7 +563,7 @@ def train(num_steps, attn_type, **kwargs):
         if current_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not current_steps % hyp['opt']['eval_iter'] == 0:
             train_acc = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss = loss.detach().cpu().item()
-            train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': current_steps, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm}
+            train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': current_steps, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm, 'a100_mfu': a100_mfu, 'time_secs': total_time_seconds}
             print_training_details(list(map(partial(format_for_table, locals=train_summary_variables), logging_columns_list)))
 
         loss.div(current_accumulate_steps).backward()
