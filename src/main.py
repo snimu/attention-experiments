@@ -655,7 +655,7 @@ def get_feature_map(attn_type: str, default: bool) -> list[Callable[[torch.Tenso
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
         return [activations.identity]
     elif attn_type in ["hydra", "hercules", "zeus"]:
-        return [activations.cos_sim_activation] if default else list(activations.ALL_ACTIVATIONS.values())
+        return [activations.cos_sim_activation] if default else list(activations.ACTIVATION_NAME_TO_FUNCTION.values())
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
@@ -682,11 +682,19 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
             for iw in get_identity_weight_vals(attn_type, property_to_default["identity_weight"])
             for fm in get_feature_map(attn_type, property_to_default["feature_map"])
         ]
-        for setting in settings:
+        for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             for idx in range(num_tries):
-                rich.print(f"\nStarting training run {idx+1}/{num_tries} for {attn_type=}, {setting=}\n")
+                printable_setting = {
+                    k: activations.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
+                    for k, v in setting.items() 
+                }
+                rich.print(
+                    f"\nStarting training run {idx+1}/{num_tries} "
+                    f"for {attn_type=}, setting={printable_setting} "
+                    f"(setting {setting_num+1}/{len(settings)})\n"
+                )
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 val_loss_list.append(val_loss)
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))

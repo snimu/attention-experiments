@@ -35,7 +35,7 @@ def identity(X: torch.Tensor) -> torch.Tensor:
     return X
 
 
-ALL_ACTIVATIONS = {
+ACTIVATION_NAME_TO_FUNCTION = {
     "cos_sim": cos_sim_activation,
     "sqrt_dim": sqrt_dim_activation,
     "tanh": tanh_activation,
@@ -45,3 +45,4 @@ ALL_ACTIVATIONS = {
     "gelu": gelu_activation,
     "identity": identity,
 }
+ACTIVATION_FUNCTION_TO_NAME = {v: k for k, v in ACTIVATION_NAME_TO_FUNCTION.items()}
