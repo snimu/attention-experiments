@@ -1,4 +1,4 @@
-"""A bunch of activation functions for Hydra Attention and equivalents."""
+"""A bunch of feature maps (activation functions) for Hydra Attention and equivalents."""
 import torch
 
 

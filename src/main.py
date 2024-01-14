@@ -37,7 +37,7 @@ import polars as pl
 import tiktoken
 
 import attention
-import activations
+import feature_maps
 
 # Check if we're using pytorch 2 for those speedups
 using_pytorch_2 = (int(torch.__version__.split('.')[0]) >= 2)
@@ -653,9 +653,9 @@ def get_identity_weight_vals(attn_type: str, default: bool):
 
 def get_feature_map(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
-        return [activations.identity]
+        return [feature_maps.identity]
     elif attn_type in ["hydra", "hercules", "zeus"]:
-        return [activations.cos_sim] if default else list(activations.ACTIVATION_NAME_TO_FUNCTION.values())
+        return [feature_maps.cos_sim] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
@@ -687,7 +687,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
             val_loss_list = []
             for idx in range(num_tries):
                 printable_setting = {
-                    k: activations.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
+                    k: feature_maps.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
                     for k, v in setting.items() 
                 }
                 rich.print(
