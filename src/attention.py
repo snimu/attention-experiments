@@ -15,6 +15,8 @@ import torch
 from torch import nn 
 from rotary_embedding_torch import RotaryEmbedding
 
+from activations import cos_sim_activation
+
 
 DEVICE_TYPE = Union[str, int, torch.device]
 
@@ -22,10 +24,6 @@ DEVICE_TYPE = Union[str, int, torch.device]
 def embed_rotary(*args: torch.Tensor, dim: int, device="cuda", dtype=torch.bfloat16) -> list[torch.Tensor]:
     rot_emb = RotaryEmbedding(dim // 2)  # rotary embedding is half the size of the dim
     return [rot_emb.rotate_queries_or_keys(arg.cpu()).to(device, dtype) for arg in args]  # TODO: why does this not work on CUDA?
-
-
-def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
-    return X / torch.linalg.norm(X, dim=-1, keepdim=True)
 
 
 class TorchMHACausal(nn.Module):

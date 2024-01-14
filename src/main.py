@@ -18,6 +18,7 @@ try:
 except NameError:
   pass ## we're still good
 """
+from typing import Callable
 import argparse
 import copy
 import functools
@@ -36,6 +37,7 @@ import polars as pl
 import tiktoken
 
 import attention
+import activations
 
 # Check if we're using pytorch 2 for those speedups
 using_pytorch_2 = (int(torch.__version__.split('.')[0]) >= 2)
@@ -625,29 +627,57 @@ def train(num_steps, attn_type, **kwargs):
     return net, val_loss # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
 
 
-def train_and_eval(hyp, num_tries=5, num_steps=500):
-    settings = {
-        'identity': [{}],
-        'hlb-gpt': [{}],
-        'torchMHA': [{}],
-        'vanilla': [{}],
-        'hydra': [{'use_out_proj': True}, {'use_out_proj': False}],
-        'hercules': [{'use_out_proj': True}, {'use_out_proj': False}],
-        'zeus': [{'identity_weight': iw} for iw in [0.0, 0.1, 0.5, 0.9, 1.0]],
-    }
+def get_use_out_proj_vals(attn_type: str, default: bool):
+    if attn_type in ["hlb-gpt", "torchMHA", "vanilla"]:
+        return [True]
+    if attn_type in ["identity", "zeus"]:
+        return [False]
+    if attn_type in ["hydra", "hercules"]:
+        return [True] if default else [True, False]
+    
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
 
+
+def get_identity_weight_vals(attn_type: str, default: bool):
+    if attn_type == "zeus":
+        return [0.5] if default else [0.0, 0.1, 0.5, 0.9, 1.0]
+    elif attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla", "hydra", "hercules"]:
+        return [None]
+    
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
+
+
+def get_feature_map(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
+    if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
+        return [activations.identity]
+    elif attn_type in ["hydra", "hercules", "zeus"]:
+        return [activations.cos_sim_activation] if default else list(activations.ALL_ACTIVATIONS.values())
+    
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
+
+
+def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], test_properties: list[str]):
     results = {
         "avg_val_loss": [],
         "attn_type": [],
         "use_out_proj": [],
         "identity_weight": [],
+        "feature_map": [],
         "num_tries": [],
         "num_steps": [],
     }
 
+    all_properties = ["use_out_proj", "identity_weight", "feature_map"]
+    property_to_default = {prop: (False if prop in test_properties else True) for prop in all_properties}
+
     hyp_init = copy.deepcopy(hyp)
-    for attn_type in settings.keys():
-        for setting in settings[attn_type]:
+    for attn_type in attn_types:
+        settings = [
+            get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"]),
+            get_identity_weight_vals(attn_type, property_to_default["identity_weight"]),
+            get_feature_map(attn_type, property_to_default["feature_map"]),
+        ]
+        for setting in itertools.product(*settings):
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             for idx in range(num_tries):
@@ -675,6 +705,8 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
+    parser.add_argument("--attn_type", type=str, default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+")
+    parser.add_argument("--test_property", type=str, default=["use_out_proj, identity_weight", "feature_map"], nargs="+")
     return parser.parse_args()
 
 
