@@ -220,7 +220,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            feature_map=kwargs['feature_map'],
+            feature_map_qkv=kwargs['feature_map_qkv'],
+            feature_map_attn=kwargs['feature_map_attn'],
             use_out_proj=kwargs['use_out_proj'],
         )
     elif attn_type == "hercules":
@@ -229,7 +230,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            feature_map=kwargs['feature_map'],
+            feature_map_qkv=kwargs['feature_map_qkv'],
+            feature_map_attn=kwargs['feature_map_attn'],
             use_out_proj=kwargs['use_out_proj'],
         )
     elif attn_type == "zeus":
@@ -238,7 +240,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            feature_map=kwargs['feature_map'],
+            feature_map_qkv=kwargs['feature_map_qkv'],
+            feature_map_attn=kwargs['feature_map_attn'],
             identity_weight=kwargs['identity_weight'],
         )
     else:
@@ -682,13 +685,13 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
         "avg_time_ns": [],
     }
 
-    all_properties = ["use_out_proj", "identity_weight", "feature_map"]
+    all_properties = ["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"]
     property_to_default = {prop: (False if prop in test_properties else True) for prop in all_properties}
 
     hyp_init = copy.deepcopy(hyp)
     for attn_type in attn_types:
         settings = [
-            {"use_out_proj": uop, "identity_weight": iw, "feature_map_qkv": fm_qkv}
+            {"use_out_proj": uop, "identity_weight": iw, "feature_map_qkv": fm_qkv, "feature_map_attn": fm_attn}
             for uop in get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"])
             for iw in get_identity_weight_vals(attn_type, property_to_default["identity_weight"])
             for fm_qkv in get_feature_map_qkv(attn_type, property_to_default["feature_map_qkv"])
