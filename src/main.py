@@ -543,6 +543,9 @@ def train(num_steps, attn_type, **kwargs):
     val_acc = None
     val_perplexity = None
 
+    train_losses = []
+    val_losses = []
+
     batch_iter_kwargs = {'data_dict': data, 'key': 'train', 'batchsize': batchsize, 'num_steps': total_microbatch_steps, 'sequence_length': hyp['misc']['sequence_length']}
 
     # Step nearly infinitely, as our breaking condition is inside the loop now
@@ -562,6 +565,7 @@ def train(num_steps, attn_type, **kwargs):
         if crnt_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not crnt_steps % hyp['opt']['eval_iter'] == 0:
             train_acc = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss = loss.detach().cpu().item()
+            train_losses.append(train_loss)
             train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': crnt_steps, 'train_loss': train_loss, 'train_acc': train_acc}
             print_training_details(list(map(partial(format_for_table, locals=train_summary_variables), logging_columns_list)))
 
@@ -616,6 +620,7 @@ def train(num_steps, attn_type, **kwargs):
                 #net.eval()
 
                 val_acc, val_loss, val_perplexity = eval(net)
+                val_losses.append(val_loss)
                 average_time_per_batch = 1e-3 * starter.elapsed_time(ender)/hyp['opt']['eval_iter']
                 # You can use this variable to print out the parameter counts of the network if you want, though we aren't printing this out in this particular version.
                 a100_mfu, _, param_counts = get_net_mfu_and_param_counts(net, current_batchsize, current_sequence_length, microbatches_since_last_eval/hyp['opt']['eval_iter'], avg_time_per_batch=average_time_per_batch)
@@ -630,7 +635,7 @@ def train(num_steps, attn_type, **kwargs):
                 net.train() # Functionally shouldn't do anything with the base network, just adding this to guard against any bugs for any future changes that do require this <3 <3 <3
         microbatch_step += 1
 
-    return net, val_loss # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
+    return net, val_loss, train_losses, val_losses # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
 
 
 def get_use_out_proj_vals(attn_type: str, default: bool):
@@ -696,6 +701,8 @@ def train_and_eval(
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
+            val_losses_list = []
+            train_losses_list = []
             time_list = []
             for idx in range(num_tries):
                 printable_setting = {
@@ -712,9 +719,11 @@ def train_and_eval(
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter_ns()
-                _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
+                _, val_loss, train_losses, val_losses = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter_ns() - t0)
                 val_loss_list.append(val_loss)
+                val_losses_list.append(val_losses)
+                train_losses_list.append(train_losses)
             df = pl.DataFrame(
                 {
                     "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
@@ -726,6 +735,14 @@ def train_and_eval(
                     "num_tries": num_tries,
                     "num_steps": num_steps,
                     "avg_time_ns": sum(time_list)/len(time_list),
+                    **{
+                        f"val_losses_{i}": val_losses_list[i]
+                        for i in range(num_tries)
+                    }
+                    **{
+                        f"train_losses_{i}": train_losses_list[i]
+                        for i in range(num_tries)
+                    }
                 }
             )
 
@@ -755,7 +772,7 @@ def train_and_eval(
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--save", action="store_true")
-    parser.add_argument("-o", "--overwrite", action="store_true")
+    parser.add_argument("--append", action="store_true")
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
     parser.add_argument(
@@ -784,7 +801,7 @@ def main() -> None:
         attn_types=args.attn_type, 
         test_properties=args.test_properties,
         save=args.save,
-        overwrite=args.overwrite,
+        overwrite=not args.append,
     )
 
 
