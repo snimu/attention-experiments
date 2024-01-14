@@ -239,7 +239,6 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
             feature_map=kwargs['feature_map'],
-            use_out_proj=kwargs['use_out_proj'],
             identity_weight=kwargs['identity_weight'],
         )
     else:
@@ -702,7 +701,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter_ns() - t0)
                 val_loss_list.append(val_loss)
-                
+
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
             results["attn_type"].append(attn_type)
             results["use_out_proj"].append(setting.get("use_out_proj", False))
