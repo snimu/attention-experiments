@@ -20,7 +20,6 @@ except NameError:
 """
 from typing import Callable
 import argparse
-import itertools
 import copy
 import functools
 from functools import partial
@@ -679,7 +678,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
             for iw in get_identity_weight_vals(attn_type, property_to_default["identity_weight"])
             for fm in get_feature_map(attn_type, property_to_default["feature_map"])
         ]
-        for setting in itertools.product(*settings):
+        for setting in settings:
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             for idx in range(num_tries):
