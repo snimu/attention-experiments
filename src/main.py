@@ -736,11 +736,11 @@ def train_and_eval(
                     "num_steps": num_steps,
                     "avg_time_ns": sum(time_list)/len(time_list),
                     **{
-                        f"val_losses_{i}": val_losses_list[i]
+                        f"val_losses_{i+1}": val_losses_list[i]
                         for i in range(num_tries)
                     },
                     **{
-                        f"train_losses_{i}": train_losses_list[i]
+                        f"train_losses_{i+1}": train_losses_list[i]
                         for i in range(num_tries)
                     },
                 }
