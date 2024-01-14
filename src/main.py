@@ -497,7 +497,7 @@ def eval(net):
 def train(num_steps, attn_type, **kwargs):
     # Initializing variables for the whole run.
     time_secs = 0.
-    microbatch_step = current_steps = 0
+    microbatch_step = crnt_steps = 0
     microbatches_since_last_eval = 0. # TODO: Good way to simplify this?
     tokens_seen = 0
 
@@ -547,8 +547,8 @@ def train(num_steps, attn_type, **kwargs):
     batch_iter_kwargs = {'data_dict': data, 'key': 'train', 'batchsize': batchsize, 'num_steps': total_microbatch_steps, 'sequence_length': hyp['misc']['sequence_length']}
 
     # Step nearly infinitely, as our breaking condition is inside the loop now
-    while current_steps < hyp['opt']['total_train_steps']:
-        if current_steps >= num_steps:
+    while crnt_steps < hyp['opt']['total_train_steps']:
+        if crnt_steps >= num_steps:
             break
 
         # Limit the batchsize each step to keep GPU memory from exploding (TODO might be to consolidate this into the 'grow_sequence_length' function if that ends up being the only place that this variable is primarily relevant)
@@ -560,10 +560,10 @@ def train(num_steps, attn_type, **kwargs):
         loss = loss_fn(outputs.flatten(0, 1), targets.flatten(0, 1))
 
         # Quick non-eval summary every N training steps
-        if current_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not current_steps % hyp['opt']['eval_iter'] == 0:
+        if crnt_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not crnt_steps % hyp['opt']['eval_iter'] == 0:
             train_acc = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss = loss.detach().cpu().item()
-            train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': current_steps, 'train_loss': train_loss, 'train_acc': train_acc}
+            train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': crnt_steps, 'train_loss': train_loss, 'train_acc': train_acc}
             print_training_details(list(map(partial(format_for_table, locals=train_summary_variables), logging_columns_list)))
 
         loss.div(current_accumulate_steps).backward()
@@ -581,7 +581,7 @@ def train(num_steps, attn_type, **kwargs):
             scheduler.step()
 
             # Check to see if we need to grow our batchsize according to the scheduler (or some potential future growing criteria :D)
-            if current_steps % hyp['misc']['sequence_length']['growth_steps'] == 0 and current_steps != 0 and current_sequence_length < hyp['misc']['sequence_length']['max']:
+            if crnt_steps % hyp['misc']['sequence_length']['growth_steps'] == 0 and crnt_steps != 0 and current_sequence_length < hyp['misc']['sequence_length']['max']:
                 current_sequence_length, current_max_batchsize, current_batchsize = grow_sequence_length(current_sequence_length, current_max_batchsize, current_batchsize)
 
             # The next several lines calculate a dynamic batchsize, simulated through manual dithering
@@ -601,12 +601,12 @@ def train(num_steps, attn_type, **kwargs):
 
             ## Using 'set_to_none' I believe is slightly faster (albeit riskier w/ funky gradient update workflows) than under the default 'set to zero' method
             opt.zero_grad(set_to_none=True)
-            current_steps += 1
+            crnt_steps += 1
 
             # Since we're not running over epochs anymore, we have to manually calculate what epoch it is.
             epoch = tokens_seen//len(data['train'])
 
-            if current_steps % hyp['opt']['eval_iter'] == 0:
+            if crnt_steps % hyp['opt']['eval_iter'] == 0:
                 ender.record()
                 torch.cuda.synchronize()
                 time_secs += 1e-3 * starter.elapsed_time(ender)
@@ -621,7 +621,7 @@ def train(num_steps, attn_type, **kwargs):
                 # You can use this variable to print out the parameter counts of the network if you want, though we aren't printing this out in this particular version.
                 a100_mfu, _, param_counts = get_net_mfu_and_param_counts(net, current_batchsize, current_sequence_length, microbatches_since_last_eval/hyp['opt']['eval_iter'], avg_time_per_batch=average_time_per_batch)
                 microbatches_since_last_eval = 0 # necessary for accurate mfu counts. How totally necessary is mfu here if we're mainly using wallclock time?
-                is_final_eval = (current_steps == hyp['opt']['total_train_steps']) # If we're at the end of training, do a full eval instead
+                is_final_eval = (crnt_steps == hyp['opt']['total_train_steps']) # If we're at the end of training, do a full eval instead
 
                 # Print out our training details (sorry for the complexity, the whole logging business here is a bit of a hot mess once the columns need to be aligned and such....)
                 ## We also check to see if we're on our final eval loop (assuming that max_num_steps lines up with the eval_iter value) so we can print the 'bottom' of the table for each round.
@@ -715,6 +715,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                     f"setting={printable_setting} "
                     f"\nSTARTING\n"
                 )
+                print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter_ns()
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter_ns() - t0)
