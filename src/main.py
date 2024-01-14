@@ -26,6 +26,7 @@ from functools import partial
 import urllib
 import zipfile
 import os
+from time import perf_counter_ns
 
 import rich
 import torch
@@ -669,6 +670,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
         "feature_map": [],
         "num_tries": [],
         "num_steps": [],
+        "avg_time_ns": [],
     }
 
     all_properties = ["use_out_proj", "identity_weight", "feature_map"]
@@ -685,6 +687,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
+            time_list = []
             for idx in range(num_tries):
                 printable_setting = {
                     k: feature_maps.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
@@ -695,14 +698,20 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                     f"for {attn_type=}, setting={printable_setting} "
                     f"(setting {setting_num+1}/{len(settings)})\n"
                 )
+                t0 = perf_counter_ns()
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
+                time_list.append(perf_counter_ns() - t0)
                 val_loss_list.append(val_loss)
+                
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
             results["attn_type"].append(attn_type)
             results["use_out_proj"].append(setting.get("use_out_proj", False))
             results["identity_weight"].append(setting.get("identity_weight", None))
+            results["feature_map"].append(feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map", None)])
             results["num_tries"].append(num_tries)
             results["num_steps"].append(num_steps)
+            results["avg_time_ns"].append(sum(time_list)/len(time_list))
+
             rich.print(f"\nDONE!!! {attn_type=}, {setting=}, {num_tries=}, avg_val_loss={results['avg_val_loss'][-1]:.2f}\n")
 
     df = pl.DataFrame(results)
