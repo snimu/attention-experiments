@@ -655,7 +655,7 @@ def get_feature_map(attn_type: str, default: bool) -> list[Callable[[torch.Tenso
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
         return [activations.identity]
     elif attn_type in ["hydra", "hercules", "zeus"]:
-        return [activations.cos_sim_activation] if default else list(activations.ACTIVATION_NAME_TO_FUNCTION.values())
+        return [activations.cos_sim] if default else list(activations.ACTIVATION_NAME_TO_FUNCTION.values())
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 

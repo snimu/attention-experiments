@@ -2,32 +2,32 @@
 import torch
 
 
-def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
+def cos_sim(X: torch.Tensor) -> torch.Tensor:
     return X / torch.linalg.norm(X, dim=-1, keepdim=True)
 
 
-def sqrt_dim_activation(X: torch.Tensor) -> torch.Tensor:
+def sqrt_dim(X: torch.Tensor) -> torch.Tensor:
     _, _, d = X.shape
     return X / torch.sqrt(torch.tensor(d))
 
 
-def tanh_activation(X: torch.Tensor) -> torch.Tensor:
+def tanh(X: torch.Tensor) -> torch.Tensor:
     return torch.tanh(X)
 
 
-def softmax_activation(X: torch.Tensor) -> torch.Tensor:
+def softmax(X: torch.Tensor) -> torch.Tensor:
     return torch.softmax(X, dim=-2)  # softmax over seq_len
 
 
-def sigmoid_activation(X: torch.Tensor) -> torch.Tensor:
+def sigmoid(X: torch.Tensor) -> torch.Tensor:
     return torch.sigmoid(X)
 
 
-def relu_activation(X: torch.Tensor) -> torch.Tensor:
+def relu(X: torch.Tensor) -> torch.Tensor:
     return torch.relu(X)
 
 
-def gelu_activation(X: torch.Tensor) -> torch.Tensor:
+def gelu(X: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.gelu(X)
 
 
@@ -36,13 +36,13 @@ def identity(X: torch.Tensor) -> torch.Tensor:
 
 
 ACTIVATION_NAME_TO_FUNCTION = {
-    "cos_sim": cos_sim_activation,
-    "sqrt_dim": sqrt_dim_activation,
-    "tanh": tanh_activation,
-    "softmax": softmax_activation,
-    "sigmoid": sigmoid_activation,
-    "relu": relu_activation,
-    "gelu": gelu_activation,
+    "cos_sim": cos_sim,
+    "sqrt_dim": sqrt_dim,
+    "tanh": tanh,
+    "softmax": softmax,
+    "sigmoid": sigmoid,
+    "relu": relu,
+    "gelu": gelu,
     "identity": identity,
 }
 ACTIVATION_FUNCTION_TO_NAME = {v: k for k, v in ACTIVATION_NAME_TO_FUNCTION.items()}
