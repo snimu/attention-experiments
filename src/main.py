@@ -732,7 +732,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
 
             rich.print(
                 f"\n{attn_type} "
-                f"setting {setting_num+1}/{len(settings)}) "
+                f"(setting {setting_num+1}/{len(settings)}) "
                 f"setting={printable_setting} "
                 f"avg_val_loss={results['avg_val_loss'][-1]:.2f} "
                 f"DONE\n"
