@@ -48,7 +48,7 @@ class TorchMHACausal(nn.Module):
         self.mask = self.update_mask(self.seq_len)
 
     def update_mask(self, seq_len: int) -> torch.Tensor:
-        self.mask = torch.triu(torch.ones(seq_len, seq_len, dtype=self.dtype), diagonal=1).to(self.device)
+        self.mask = torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool), diagonal=0).to(self.device)
         self.seq_len = seq_len
         return self.mask
 
