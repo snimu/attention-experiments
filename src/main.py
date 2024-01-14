@@ -706,11 +706,12 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                 printable_setting = {
                     k: feature_maps.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
                     for k, v in setting.items() 
+                    if k in test_properties
                 }
                 rich.print(
-                    f"\n{attn_type} ({int(setting_num*num_tries+idx)}/{int(len(settings)*num_tries)} "
-                    f"setting {setting_num+1}/{len(settings)}) "
-                    f"try {idx+1}/{num_tries} "
+                    f"\n{attn_type} ({int(setting_num*num_tries+idx+1)}/{int(len(settings)*num_tries)} "
+                    f"setting {setting_num+1}/{len(settings)} "
+                    f"try {idx+1}/{num_tries}) "
                     f"setting={printable_setting} "
                     f"\nSTARTING\n"
                 )
