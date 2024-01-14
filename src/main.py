@@ -672,24 +672,20 @@ def get_feature_map_attn(attn_type: str, default: bool) -> list[Callable[[torch.
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], test_properties: list[str]):
-    results = {
-        "avg_val_loss": [],
-        "attn_type": [],
-        "use_out_proj": [],
-        "identity_weight": [],
-        "feature_map_qkv": [],
-        "feature_map_attn": [],
-        "num_tries": [],
-        "num_steps": [],
-        "avg_time_ns": [],
-    }
-
+def train_and_eval(
+        hyp, 
+        num_tries: int, 
+        num_steps: int, 
+        attn_types: list[str], 
+        test_properties: list[str],
+        save: bool,
+        overwrite: bool,
+):
     all_properties = ["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"]
     property_to_default = {prop: (False if prop in test_properties else True) for prop in all_properties}
 
     hyp_init = copy.deepcopy(hyp)
-    for attn_type in attn_types:
+    for attn_num, attn_type in enumerate(attn_types):
         settings = [
             {"use_out_proj": uop, "identity_weight": iw, "feature_map_qkv": fm_qkv, "feature_map_attn": fm_attn}
             for uop in get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"])
@@ -720,16 +716,25 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter_ns() - t0)
                 val_loss_list.append(val_loss)
+            df = pl.DataFrame(
+                {
+                    "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
+                    "attn_type": attn_type,
+                    "use_out_proj": setting.get("use_out_proj", False),
+                    "identity_weight": setting.get("identity_weight", None),
+                    "feature_map_qkv": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)],
+                    "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
+                    "num_tries": num_tries,
+                    "num_steps": num_steps,
+                    "avg_time_ns": sum(time_list)/len(time_list),
+                }
+            )
 
-            results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
-            results["attn_type"].append(attn_type)
-            results["use_out_proj"].append(setting.get("use_out_proj", False))
-            results["identity_weight"].append(setting.get("identity_weight", None))
-            results["feature_map_qkv"].append(feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)])
-            results["feature_map_attn"].append(feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)])
-            results["num_tries"].append(num_tries)
-            results["num_steps"].append(num_steps)
-            results["avg_time_ns"].append(sum(time_list)/len(time_list))
+            if not os.path.exists('results.csv') or (overwrite and attn_num == setting_num == 0):
+                df.write_csv('results.csv')
+            else:
+                with open('results.csv', 'a') as f:
+                    df.write_csv(f, mode='a', header=False)
 
             rich.print(
                 f"\n{attn_type} "
@@ -750,6 +755,8 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--save", action="store_true")
+    parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
     parser.add_argument("--attn_type", type=str, default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+")
@@ -770,6 +777,8 @@ def main() -> None:
         num_steps=args.num_steps, 
         attn_types=args.attn_type, 
         test_properties=args.test_properties,
+        save=args.save,
+        overwrite=args.overwrite,
     )
 
 
