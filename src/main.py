@@ -651,11 +651,20 @@ def get_identity_weight_vals(attn_type: str, default: bool):
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def get_feature_map(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
+def get_feature_map_qkv(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
         return [feature_maps.identity]
     elif attn_type in ["hydra", "hercules", "zeus"]:
         return [feature_maps.cos_sim] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+    
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
+
+
+def get_feature_map_attn(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
+    if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
+        return [feature_maps.identity]
+    elif attn_type in ["hydra", "hercules", "zeus"]:
+        return [feature_maps.identity] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
@@ -666,7 +675,8 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
         "attn_type": [],
         "use_out_proj": [],
         "identity_weight": [],
-        "feature_map": [],
+        "feature_map_qkv": [],
+        "feature_map_attn": [],
         "num_tries": [],
         "num_steps": [],
         "avg_time_ns": [],
@@ -678,10 +688,12 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
     hyp_init = copy.deepcopy(hyp)
     for attn_type in attn_types:
         settings = [
-            {"use_out_proj": uop, "identity_weight": iw, "feature_map": fm}
+            {"use_out_proj": uop, "identity_weight": iw, "feature_map_qkv": fm_qkv}
             for uop in get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"])
             for iw in get_identity_weight_vals(attn_type, property_to_default["identity_weight"])
-            for fm in get_feature_map(attn_type, property_to_default["feature_map"])
+            for fm_qkv in get_feature_map_qkv(attn_type, property_to_default["feature_map_qkv"])
+            for fm_attn in get_feature_map_attn(attn_type, property_to_default["feature_map_attn"])
+
         ]
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
@@ -708,7 +720,8 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
             results["attn_type"].append(attn_type)
             results["use_out_proj"].append(setting.get("use_out_proj", False))
             results["identity_weight"].append(setting.get("identity_weight", None))
-            results["feature_map"].append(feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map", None)])
+            results["feature_map_qkv"].append(feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)])
+            results["feature_map_attn"].append(feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)])
             results["num_tries"].append(num_tries)
             results["num_steps"].append(num_steps)
             results["avg_time_ns"].append(sum(time_list)/len(time_list))
@@ -735,7 +748,12 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
     parser.add_argument("--attn_type", type=str, default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+")
-    parser.add_argument("--test_properties", type=str, default=["use_out_proj, identity_weight", "feature_map"], nargs="+")
+    parser.add_argument(
+        "--test_properties", 
+        type=str, 
+        default=["use_out_proj, identity_weight", "feature_map_qkv", "feature_map_attn"], 
+        nargs="+",
+    )
     return parser.parse_args()
 
 

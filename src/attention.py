@@ -15,7 +15,7 @@ import torch
 from torch import nn 
 from rotary_embedding_torch import RotaryEmbedding
 
-from feature_maps import cos_sim
+from feature_maps import cos_sim, identity
 
 
 DEVICE_TYPE = Union[str, int, torch.device]
@@ -212,14 +212,16 @@ class Hydra(nn.Module):
             self, 
             feature_dim: int, 
             norm: nn.Module,
-            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
-        self.feature_map = feature_map
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
         self.norm = norm
         self.device = device
         self.dtype = dtype
@@ -229,8 +231,8 @@ class Hydra(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.sum(self.feature_map(K) * V, dim=-2)
-        Y = A * Q
+        A = torch.sum(self.feature_map_qkv(K) * V, dim=-2)
+        Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         Y = self.out_proj(Y)
         Z = Y + X
         return Z
@@ -241,14 +243,16 @@ class HydraCausal(nn.Module):
             self, 
             feature_dim: int, 
             norm: nn.Module,
-            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
-        self.feature_map = feature_map
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
         self.norm = norm
         self.device = device
         self.dtype = dtype
@@ -258,8 +262,8 @@ class HydraCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.cumsum(self.feature_map(K) * V, dim=-2)  # cumsum means causal
-        Y = A * self.feature_map(Q)
+        A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
+        Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         Y = self.out_proj(Y)
         Z = Y + X
         return Z
@@ -276,14 +280,16 @@ class Hercules(nn.Module):
             self, 
             feature_dim: int, 
             norm: nn.Module,
-            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
-        self.feature_map = feature_map
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
         self.norm = norm
         self.device = device
         self.dtype = dtype
@@ -293,8 +299,8 @@ class Hercules(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.sum(self.feature_map(K) * self.feature_map(V), dim=-2)
-        Y = A * Q
+        A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
+        Y = self.feature_map_attn(A) * Q
         Y = self.out_proj(Y)
         Z = Y + X
         return Z
@@ -311,14 +317,16 @@ class HerculesCausal(nn.Module):
             self, 
             feature_dim: int, 
             norm: nn.Module,
-            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
-        self.feature_map = feature_map
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
         self.norm = norm
         self.device = device
         self.dtype = dtype
@@ -328,8 +336,8 @@ class HerculesCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.cumsum(self.feature_map(K) * self.feature_map(V), dim=-2)
-        Y = A * Q
+        A = torch.cumsum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
+        Y = self.feature_map_attn(A) * Q
         Y = self.out_proj(Y)
         Z = Y + X
         return Z
@@ -346,14 +354,16 @@ class Zeus(nn.Module):
             self, 
             feature_dim: int, 
             norm: nn.Module,
-            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
-        self.feature_map = feature_map
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
         self.norm = norm
         self.device = device
         self.dtype = dtype
@@ -363,8 +373,8 @@ class Zeus(nn.Module):
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.sum(self.feature_map(K) * self.feature_map(V), dim=-2)
-        A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
+        A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
+        A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
         Z = A * X
         return Z
 
@@ -378,14 +388,16 @@ class ZeusCausal(nn.Module):
             self, 
             feature_dim: int, 
             norm: nn.Module,
-            feature_map: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             identity_weight: float = 0.5,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
-        self.feature_map = feature_map
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
         self.norm = norm
         self.device = device
         self.dtype = dtype
@@ -395,7 +407,7 @@ class ZeusCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
-        A = torch.cumsum(self.feature_map(K) * self.feature_map(V), dim=-2)
-        A = (1 - self.identity_weight) * A + self.identity_weight  # =^= residual
+        A = torch.cumsum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
+        A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
         Z = A * X
         return Z
