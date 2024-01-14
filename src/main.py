@@ -219,7 +219,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            **kwargs,
+            feature_map=kwargs['feature_map'],
+            use_out_proj=kwargs['use_out_proj'],
         )
     elif attn_type == "hercules":
         attn = attention.HerculesCausal(
@@ -227,7 +228,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            **kwargs,
+            feature_map=kwargs['feature_map'],
+            use_out_proj=kwargs['use_out_proj'],
         )
     elif attn_type == "zeus":
         attn = attention.ZeusCausal(
@@ -235,7 +237,9 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            **kwargs,
+            feature_map=kwargs['feature_map'],
+            use_out_proj=kwargs['use_out_proj'],
+            identity_weight=kwargs['identity_weight'],
         )
     else:
         raise ValueError(f"Unrecognized attention type: {attn_type}")
