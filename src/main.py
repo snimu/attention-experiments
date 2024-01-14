@@ -693,9 +693,11 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                     for k, v in setting.items() 
                 }
                 rich.print(
-                    f"\nStarting training run {idx+1}/{num_tries} "
-                    f"for {attn_type=}, setting={printable_setting} "
-                    f"(setting {setting_num+1}/{len(settings)})\n"
+                    f"\n{attn_type} ({int(setting_num*idx+idx)}/{int(len(settings)*num_tries)} "
+                    f"setting {setting_num+1}/{len(settings)}) "
+                    f"try {idx+1}/{num_tries} "
+                    f"setting={printable_setting} "
+                    f"\nSTARTING\n"
                 )
                 t0 = perf_counter_ns()
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
@@ -711,7 +713,13 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
             results["num_steps"].append(num_steps)
             results["avg_time_ns"].append(sum(time_list)/len(time_list))
 
-            rich.print(f"\nDONE!!! {attn_type=}, {setting=}, {num_tries=}, avg_val_loss={results['avg_val_loss'][-1]:.2f}\n")
+            rich.print(
+                f"\n{attn_type} "
+                f"setting {setting_num+1}/{len(settings)}) "
+                f"avg_val_loss={results['avg_val_loss'][-1]:.2f} "
+                f"setting={printable_setting} "
+                f"\DONE\n"
+            )
 
     df = pl.DataFrame(results)
     df = df.sort(by="avg_val_loss")
