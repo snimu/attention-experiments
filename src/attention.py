@@ -15,7 +15,7 @@ import torch
 from torch import nn 
 from rotary_embedding_torch import RotaryEmbedding
 
-from activations import cos_sim
+from feature_maps import cos_sim
 
 
 DEVICE_TYPE = Union[str, int, torch.device]
