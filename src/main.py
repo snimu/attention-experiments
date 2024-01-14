@@ -750,7 +750,7 @@ def train_and_eval(
                 df.write_csv('results.csv')
             else:
                 with open('results.csv', 'a') as f:
-                    df.write_csv(f, mode='a', header=False)
+                    df.write_csv(f, include_header=False)
 
             rich.print(
                 f"\n{attn_type} "
