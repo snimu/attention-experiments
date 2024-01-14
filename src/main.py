@@ -429,7 +429,7 @@ def grow_sequence_length(current_sequence_length, current_max_batchsize, current
 ## However! If (esp for tiny datsets) we're seeing our data multiple times in a row, then maybe some smoothing to help regularize things a bit is in order.... :D
 loss_fn = nn.CrossEntropyLoss(reduction='mean', ignore_index=-1)
 
-logging_columns_list = ['epoch', 'current_steps', 'train_loss', 'val_loss', 'val_perplexity', 'train_acc', 'val_acc', 'grad_norm', 'a100_mfu', 'total_time_seconds']
+logging_columns_list = ['epoch', 'crnt_steps', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'a100_mfu', 'time_secs']
 # define the printing function and print the column heads
 def print_training_details(columns_list, separator_left='|  ', separator_right='  ', final="|", column_heads_only=False, is_final_entry=False):
     print_string = ""
@@ -649,10 +649,9 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
     for attn_type in settings.keys():
         for setting in settings[attn_type]:
             hyp = copy.deepcopy(hyp_init)
-            rich.print(f"\n\nStarting training with attention type: {attn_type}, and setting: {setting}\n\n")
             val_loss_list = []
             for idx in range(num_tries):
-                rich.print(f"\n\nStarting training run {idx+1} of {num_tries} for {attn_type=}, {setting=}\n\n")
+                rich.print(f"\nStarting training run {idx+1}/{num_tries} for {attn_type=}, {setting=}\n")
                 _, val_loss = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 val_loss_list.append(val_loss)
             results["avg_val_loss"].append(sum(val_loss_list)/len(val_loss_list))
@@ -661,7 +660,7 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
             results["identity_weight"].append(setting.get("identity_weight", None))
             results["num_tries"].append(num_tries)
             results["num_steps"].append(num_steps)
-            rich.print(f"\n\nDONE!!! {attn_type=}, {setting=}, {num_tries=}\n\n")
+            rich.print(f"\nDONE!!! {attn_type=}, {setting=}, {num_tries=}, avg_val_loss={results['avg_val_loss']}\n")
 
     df = pl.DataFrame(results)
     rich.print("\n\nResults:\n\n")
