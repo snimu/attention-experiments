@@ -20,6 +20,7 @@ except NameError:
 """
 from typing import Callable
 import argparse
+import itertools
 import copy
 import functools
 from functools import partial
