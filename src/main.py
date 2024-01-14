@@ -762,15 +762,15 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--attn_type", 
         type=str, 
-        default=["identity", "hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"],
-        choices=["identity", "hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], 
+        default=["identity", "hlb-gpt", "torchMHA", "vanilla", "hydra", "hercules", "zeus"],
+        choices=["identity", "hlb-gpt", "torchMHA", "vanilla", "hydra", "hercules", "zeus"],
         nargs="+",
     )
     parser.add_argument(
         "--test_properties", 
         type=str, 
-        default=["use_out_proj, identity_weight", "feature_map_qkv", "feature_map_attn"], 
-        choices=["use_out_proj, identity_weight", "feature_map_qkv", "feature_map_attn"],
+        default=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"], 
+        choices=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"],
         nargs="+",
     )
     return parser.parse_args()
