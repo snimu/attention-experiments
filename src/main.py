@@ -693,7 +693,7 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
                     for k, v in setting.items() 
                 }
                 rich.print(
-                    f"\n{attn_type} ({int(setting_num*idx+idx)}/{int(len(settings)*num_tries)} "
+                    f"\n{attn_type} ({int(setting_num*num_tries+idx)}/{int(len(settings)*num_tries)} "
                     f"setting {setting_num+1}/{len(settings)}) "
                     f"try {idx+1}/{num_tries} "
                     f"setting={printable_setting} "
