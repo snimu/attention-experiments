@@ -753,7 +753,7 @@ def train_and_eval(
             if not os.path.exists('results.csv') or (overwrite and attn_num == setting_num == 0):
                 df.write_csv('results.csv')
             else:
-                with open('results.csv', 'a') as f:
+                with open('results.csv', 'ab') as f:
                     df.write_csv(f, include_header=False)
 
             done_header = (
@@ -769,9 +769,17 @@ def train_and_eval(
     df = pl.read_csv('results.csv')
     df = df.sort(by="avg_val_loss")
     rich.print("\n\nSorted Results:\n\n")
-    rich.print(str(df.columns[:9]))
+    rich.print(
+        str(col) + "   " 
+        for col in df.columns 
+        if "val_losses" not in str(col) and "train_losses" not in str(col)
+    )
     for row in df.iter_rows():
-        rich.print(str(row[:9]))
+        rich.print(
+            str(item) + "   "
+            for i, item in enumerate(row)
+            if "val_losses" not in str(df.columns[i]) and "train_losses" not in str(df.columns[i])
+        )
 
 
 def get_args() -> argparse.Namespace:
