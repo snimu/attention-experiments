@@ -706,13 +706,19 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
     parser.add_argument("--attn_type", type=str, default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+")
-    parser.add_argument("--test_property", type=str, default=["use_out_proj, identity_weight", "feature_map"], nargs="+")
+    parser.add_argument("--test_properties", type=str, default=["use_out_proj, identity_weight", "feature_map"], nargs="+")
     return parser.parse_args()
 
 
 def main() -> None:
     args = get_args()
-    train_and_eval(hyp, num_tries=args.num_tries, num_steps=args.num_steps)
+    train_and_eval(
+        hyp, 
+        num_tries=args.num_tries, 
+        num_steps=args.num_steps, 
+        attn_types=args.attn_type, 
+        test_properties=args.test_properties,
+    )
 
 
 if __name__ == '__main__':
