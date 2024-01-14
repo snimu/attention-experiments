@@ -717,11 +717,10 @@ def train_and_eval(
                     f"setting={printable_setting} "
                 )
                 rich.print(
-                    f"\n{'-'*len(start_header)}"
-                    f"\n{'-'*len(start_header)}{start_header}\n"
-                    f"\nSTARTING\n"
-                    f"{'-'*len(start_header)}\n"
-                    f"{'-'*len(start_header)}\n"
+                    f"\n{':'*len(start_header)}"
+                    f"\nSTARTING:\n"
+                    f"{start_header}\n"
+                    f"{':'*len(start_header)}\n"
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter_ns()
@@ -765,11 +764,10 @@ def train_and_eval(
                 f"avg_val_loss={results['avg_val_loss']:.2f} "
             )
             rich.print(
-                f"\n{'-'*len(done_header)}"
-                f"\n{'-'*len(done_header)}"
-                f"{done_header}\nDONE\n"
-                f"{'-'*len(done_header)}\n"
-                f"{'-'*len(done_header)}\n"
+                f"\n{':'*len(done_header)}"
+                f"\nDONE\n"
+                f"{done_header}"
+                f"{':'*len(done_header)}\n"
             )
 
     df = pl.read_csv('results.csv')
