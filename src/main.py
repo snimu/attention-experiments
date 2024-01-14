@@ -766,13 +766,12 @@ def train_and_eval(
                 f"\n{'-'*len(done_header)}{done_header}\nDONE\n{'-'*len(done_header)}\n"
             )
 
-    df = pl.DataFrame(results)
+    df = pl.read_csv('results.csv')
     df = df.sort(by="avg_val_loss")
     rich.print("\n\nSorted Results:\n\n")
     rich.print(str(df.columns[:9]))
     for row in df.iter_rows():
         rich.print(str(row[:9]))
-    df.write_csv("results.csv")
 
 
 def get_args() -> argparse.Namespace:
