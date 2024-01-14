@@ -759,11 +759,17 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
-    parser.add_argument("--attn_type", type=str, default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+")
+    parser.add_argument(
+        "--attn_type", 
+        type=str, 
+        default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+",
+        choices=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+",
+    )
     parser.add_argument(
         "--test_properties", 
         type=str, 
         default=["use_out_proj, identity_weight", "feature_map_qkv", "feature_map_attn"], 
+        choices=["use_out_proj, identity_weight", "feature_map_qkv", "feature_map_attn"],
         nargs="+",
     )
     return parser.parse_args()
