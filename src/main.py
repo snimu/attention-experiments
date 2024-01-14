@@ -763,9 +763,9 @@ def train_and_eval(
     df = pl.DataFrame(results)
     df = df.sort(by="avg_val_loss")
     rich.print("\n\nSorted Results:\n\n")
-    rich.print(str(df.columns))
+    rich.print(str(df.columns[:9]))
     for row in df.iter_rows():
-        rich.print(str(row))
+        rich.print(str(row[:9]))
     df.write_csv("results.csv")
 
 
