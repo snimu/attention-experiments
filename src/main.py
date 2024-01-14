@@ -457,7 +457,6 @@ def print_training_details(columns_list, separator_left='|  ', separator_right='
     if is_final_entry:
         print('-'*(len(print_string))) # print the final output bar
 
-print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
 
 # We basically need to look up local variables by name so we can have the names, so we can pad to the proper column width.
 ## Printing stuff in the terminal can get tricky and in a previous life, this used an outside library. But some of the required stuff
