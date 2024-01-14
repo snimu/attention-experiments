@@ -674,9 +674,10 @@ def train_and_eval(hyp, num_tries: int, num_steps: int, attn_types: list[str], t
     hyp_init = copy.deepcopy(hyp)
     for attn_type in attn_types:
         settings = [
-            get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"]),
-            get_identity_weight_vals(attn_type, property_to_default["identity_weight"]),
-            get_feature_map(attn_type, property_to_default["feature_map"]),
+            {"use_out_proj": uop, "identity_weight": iw, "feature_map": fm}
+            for uop in get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"])
+            for iw in get_identity_weight_vals(attn_type, property_to_default["identity_weight"])
+            for fm in get_feature_map(attn_type, property_to_default["feature_map"])
         ]
         for setting in itertools.product(*settings):
             hyp = copy.deepcopy(hyp_init)
