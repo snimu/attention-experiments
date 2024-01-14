@@ -663,10 +663,6 @@ def train_and_eval(hyp, num_tries=5, num_steps=500):
             rich.print(f"\nDONE!!! {attn_type=}, {setting=}, {num_tries=}, avg_val_loss={results['avg_val_loss'][-1]}\n")
 
     df = pl.DataFrame(results)
-    rich.print("\n\nResults:\n\n")
-    rich.print(str(df.columns))
-    for row in df.iter_rows():
-        rich.print(str(row))
     df = df.sort(by="avg_val_loss")
     rich.print("\n\nSorted Results:\n\n")
     rich.print(str(df.columns))
