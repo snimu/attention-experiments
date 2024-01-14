@@ -710,12 +710,16 @@ def train_and_eval(
                     for k, v in setting.items() 
                     if k in test_properties
                 }
-                rich.print(
+                start_header = (
                     f"\n{attn_type} ({int(setting_num*num_tries+idx+1)}/{int(len(settings)*num_tries)} "
                     f"setting {setting_num+1}/{len(settings)} "
                     f"try {idx+1}/{num_tries}) "
                     f"setting={printable_setting} "
+                )
+                rich.print(
+                    f"\n{'-'*len(start_header)}{start_header}\n"
                     f"\nSTARTING\n"
+                    f"{'-'*len(start_header)}\n"
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter_ns()
@@ -752,12 +756,14 @@ def train_and_eval(
                 with open('results.csv', 'a') as f:
                     df.write_csv(f, include_header=False)
 
-            rich.print(
+            done_header = (
                 f"\n{attn_type} "
                 f"(setting {setting_num+1}/{len(settings)}) "
                 f"setting={printable_setting} "
                 f"avg_val_loss={results['avg_val_loss'][-1]:.2f} "
-                f"DONE\n"
+            )
+            rich.print(
+                f"\n{'-'*len(done_header)}{done_header}\nDONE\n{'-'*len(done_header)}\n"
             )
 
     df = pl.DataFrame(results)
