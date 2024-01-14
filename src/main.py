@@ -762,8 +762,9 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--attn_type", 
         type=str, 
-        default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+",
-        choices=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], nargs="+",
+        default=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"],
+        choices=["hlb-gpt, torchMHA, vanilla, hydra, hercules, zeus"], 
+        nargs="+",
     )
     parser.add_argument(
         "--test_properties", 
