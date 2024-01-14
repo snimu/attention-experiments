@@ -8,7 +8,7 @@ def cos_sim_activation(X: torch.Tensor) -> torch.Tensor:
 
 def sqrt_dim_activation(X: torch.Tensor) -> torch.Tensor:
     _, _, d = X.shape
-    return X / torch.sqrt(d)
+    return X / torch.sqrt(torch.tensor(d))
 
 
 def tanh_activation(X: torch.Tensor) -> torch.Tensor:
