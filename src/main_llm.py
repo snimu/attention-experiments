@@ -687,6 +687,7 @@ def train_and_eval(
 ):
     if not save:
         rich.print("\n\nWARNING: Not saving results to disk.\n\n")
+
     all_properties = ["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"]
     property_to_default = {prop: (False if prop in test_properties else True) for prop in all_properties}
 
