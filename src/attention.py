@@ -191,6 +191,19 @@ class VanillaCausal(nn.Module):
         return context
 
 
+def img_to_qkv(
+        X: torch.Tensor, 
+        norm: nn.Module, 
+        in_proj: nn.Module, 
+        heads: int = 1,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    qkv = in_proj(norm(X)).chunk(3, dim=1)
+    q, k, v = map(
+        lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=heads), qkv
+    ) 
+    return q, k, v
+
+
 class VanillaConv(nn.Module):
     def __init__(self, feature_dim, norm, heads=4, dim_head=32):
         super().__init__()
@@ -198,24 +211,21 @@ class VanillaConv(nn.Module):
         self.heads = heads
         self.norm = norm
         hidden_dim = dim_head * heads
-        self.to_qkv = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
-        self.to_out = nn.Conv2d(hidden_dim, feature_dim, 1)
+        self.in_proj = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
+        self.out_proj = nn.Conv2d(hidden_dim, feature_dim, 1)
 
-    def forward(self, x):
-        b, c, h, w = x.shape
-        qkv = self.to_qkv(self.norm(x)).chunk(3, dim=1)
-        q, k, v = map(
-            lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
-        )
-        q = q * self.scale
+    def forward(self, X):
+        Q, V, v = img_to_qkv(X, self.norm, self.in_proj, heads=self.heads)
+        Q = Q * self.scale
 
-        sim = torch.einsum("b h d i, b h d j -> b h i j", q, k)
+        sim = torch.einsum("b h d i, b h d j -> b h i j", Q, V)
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
 
         out = torch.einsum("b h i j, b h d j -> b h i d", attn, v)
+        _, _, h, w = X.shape
         out = rearrange(out, "b h (x y) d -> b (h d) x y", x=h, y=w)
-        return self.to_out(out) + x
+        return self.out_proj(out) + X
     
 
 class LinearConv(nn.Module):
@@ -225,27 +235,26 @@ class LinearConv(nn.Module):
         self.heads = heads
         self.norm = norm
         hidden_dim = dim_head * heads
-        self.to_qkv = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
+        self.in_proj = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
 
-        self.to_out = nn.Sequential(nn.Conv2d(hidden_dim, feature_dim, 1), 
-                                    nn.GroupNorm(1, feature_dim))
-
-    def forward(self, x):
-        b, c, h, w = x.shape
-        qkv = self.to_qkv(self.norm(x)).chunk(3, dim=1)
-        q, k, v = map(
-            lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
+        self.out_proj = nn.Sequential(
+            nn.Conv2d(hidden_dim, feature_dim, 1), 
+            nn.GroupNorm(1, feature_dim)
         )
 
-        q = q.softmax(dim=-2)
-        k = k.softmax(dim=-1)
+    def forward(self, X):
+        Q, K, V = img_to_qkv(X, self.norm, self.in_proj, heads=self.heads)
 
-        q = q * self.scale
-        context = torch.einsum("b h d n, b h e n -> b h d e", k, v)
+        Q = Q.softmax(dim=-2)
+        K = K.softmax(dim=-1)
 
-        out = torch.einsum("b h d e, b h d n -> b h e n", context, q)
+        Q = Q * self.scale
+        context = torch.einsum("b h d n, b h e n -> b h d e", K, V)
+
+        out = torch.einsum("b h d e, b h d n -> b h e n", context, Q)
+        _, _, h, w = X.shape
         out = rearrange(out, "b h c (x y) -> b (h c) x y", h=self.heads, x=h, y=w)
-        return self.to_out(out) + x
+        return self.out_proj(out) + X
 
 
 """
