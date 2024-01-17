@@ -245,7 +245,7 @@ class Unet(nn.Module):
                     [
                         block_klass(dim_in, dim_in, time_emb_dim=time_dim),
                         block_klass(dim_in, dim_in, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_in, in_attn_constructor(dim_in, **in_attn_settings))),
+                        in_attn_constructor(dim_in, norm=nn.GroupNorm(1, dim_in) **in_attn_settings),
                         Downsample(dim_in, dim_out)
                         if not is_last
                         else nn.Conv2d(dim_in, dim_out, 3, padding=1),
@@ -255,7 +255,7 @@ class Unet(nn.Module):
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
-        self.mid_attn = Residual(PreNorm(mid_dim, mid_attn_constructor(mid_dim, **mid_attn_settings)))
+        self.mid_attn = mid_attn_constructor(mid_dim, norm=nn.GroupNorm(1, mid_dim) **mid_attn_settings)
         self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
@@ -266,7 +266,7 @@ class Unet(nn.Module):
                     [
                         block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
                         block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_out, out_attn_constructor(dim_out, **out_attn_settings))),
+                        dim_out, out_attn_constructor(dim_out, norm=nn.GroupNorm(1, dim_out), **out_attn_settings),
                         Upsample(dim_out, dim_in)
                         if not is_last
                         else nn.Conv2d(dim_out, dim_in, 3, padding=1),
@@ -609,19 +609,16 @@ get_attn_settings = {
     "linear": {},
     "vanilla": {},
     "hydra": {
-        "norm": nn.Identity(),   # TODO: really?
         "feature_map_qkv": feature_maps.cos_sim,  # TODO: pick correct feature maps
         "feature_map_out": feature_maps.cos_sim, 
         "device": device,
     },
     "hercules": {
-        "norm": nn.Identity(),
         "feature_map_qkv": feature_maps.cos_sim,
         "feature_map_out": feature_maps.cos_sim,
         "device": device,
     },
     "zeus": {
-        "norm": nn.Identity(),
         "feature_map_qkv": feature_maps.cos_sim,
         "feature_map_out": feature_maps.cos_sim,
         "device": device,

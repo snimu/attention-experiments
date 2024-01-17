@@ -192,17 +192,18 @@ class VanillaCausal(nn.Module):
 
 
 class VanillaConv(nn.Module):
-    def __init__(self, feature_dim, heads=4, dim_head=32):
+    def __init__(self, feature_dim, norm, heads=4, dim_head=32):
         super().__init__()
         self.scale = dim_head**-0.5
         self.heads = heads
+        self.norm = norm
         hidden_dim = dim_head * heads
         self.to_qkv = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
         self.to_out = nn.Conv2d(hidden_dim, feature_dim, 1)
 
     def forward(self, x):
         b, c, h, w = x.shape
-        qkv = self.to_qkv(x).chunk(3, dim=1)
+        qkv = self.to_qkv(self.norm(x)).chunk(3, dim=1)
         q, k, v = map(
             lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
         )
@@ -214,14 +215,15 @@ class VanillaConv(nn.Module):
 
         out = torch.einsum("b h i j, b h d j -> b h i d", attn, v)
         out = rearrange(out, "b h (x y) d -> b (h d) x y", x=h, y=w)
-        return self.to_out(out)
+        return self.to_out(out) + x
     
 
 class LinearConv(nn.Module):
-    def __init__(self, feature_dim, heads=4, dim_head=32):
+    def __init__(self, feature_dim, norm, heads=4, dim_head=32):
         super().__init__()
         self.scale = dim_head**-0.5
         self.heads = heads
+        self.norm = norm
         hidden_dim = dim_head * heads
         self.to_qkv = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
 
@@ -230,7 +232,7 @@ class LinearConv(nn.Module):
 
     def forward(self, x):
         b, c, h, w = x.shape
-        qkv = self.to_qkv(x).chunk(3, dim=1)
+        qkv = self.to_qkv(self.norm(x)).chunk(3, dim=1)
         q, k, v = map(
             lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
         )
@@ -243,7 +245,7 @@ class LinearConv(nn.Module):
 
         out = torch.einsum("b h d e, b h d n -> b h e n", context, q)
         out = rearrange(out, "b h c (x y) -> b (h c) x y", h=self.heads, x=h, y=w)
-        return self.to_out(out)
+        return self.to_out(out) + x
 
 
 """
