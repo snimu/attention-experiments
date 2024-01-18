@@ -755,10 +755,10 @@ def train_and_eval(
             df = pl.DataFrame(results)
 
             if save:
-                if not os.path.exists('results.csv') or (overwrite and attn_num == setting_num == 0):
-                    df.write_csv('results.csv')
+                if not os.path.exists('results_llm.csv') or (overwrite and attn_num == setting_num == 0):
+                    df.write_csv('results_llm.csv')
                 else:
-                    with open('results.csv', 'ab') as f:
+                    with open('results_llm.csv', 'ab') as f:
                         df.write_csv(f, include_header=False)
 
             done_header = (
@@ -774,7 +774,7 @@ def train_and_eval(
                 f"{':'*len(done_header)}\n"
             )
 
-    df = pl.read_csv('results.csv')
+    df = pl.read_csv('results_llm.csv')
     df = df.sort(by="avg_val_loss")
     rich.print("\n\nSorted Results:\n\n")
     rich.print(str(df.columns[:9]))
