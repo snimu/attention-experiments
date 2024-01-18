@@ -196,12 +196,13 @@ def img_to_qkv(
         norm: nn.Module, 
         in_proj: nn.Module, 
         heads: int = 1,
+        chunks: int = 3,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    qkv = in_proj(norm(X)).chunk(3, dim=1)
-    q, k, v = map(
+    qkv = in_proj(norm(X)).chunk(chunks, dim=1)
+    qkv = map(
         lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=heads), qkv
     ) 
-    return q, k, v
+    return qkv
 
 
 class VanillaConv(nn.Module):
@@ -336,6 +337,41 @@ class HydraCausal(nn.Module):
         return Z
 
 
+class HydraConv(nn.Module):
+    """ 
+    Acausal Hydra Attention for images.
+    """
+    def __init__(
+            self, 
+            feature_dim: int, 
+            norm: nn.Module,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
+            use_out_proj: bool = True,
+            device: DEVICE_TYPE = 'cuda',
+            dtype: torch.dtype = torch.bfloat16,
+    ):
+        super().__init__()
+        self.feature_dim = feature_dim
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
+        self.norm = norm
+        self.device = device
+        self.dtype = dtype
+        self.in_proj = nn.Conv2d(feature_dim, feature_dim * 3, 1, bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Conv2d(feature_dim, feature_dim, 1, device=device, dtype=dtype) if use_out_proj else nn.Identity()
+
+    def forward(self, X: torch.Tensor):
+        Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
+        A = torch.sum(self.feature_map_qkv(K) * V, dim=-1)  # Attend over the spatial dimension # TODO: is this correct?
+        Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
+        Y = self.out_proj(Y)
+        _, _, h, w = X.shape
+        Y = rearrange(Y, "b 1 c (x y) -> b c x y", x=h, y=w)
+        Z = Y + X
+        return Z
+
+
 class Hercules(nn.Module):
     """
     Acausal Hercules Attention.
@@ -369,6 +405,44 @@ class Hercules(nn.Module):
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         Y = self.feature_map_attn(A) * Q
         Y = self.out_proj(Y)
+        Z = Y + X
+        return Z
+    
+
+class HerculesConv(nn.Module):
+    """
+    Acausal Hercules Attention for images.
+    
+    "Hercules" because it is meant to slay the Hydra.
+    """
+
+    def __init__(
+            self, 
+            feature_dim: int, 
+            norm: nn.Module,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
+            use_out_proj: bool = True,
+            device: DEVICE_TYPE = 'cuda',
+            dtype: torch.dtype = torch.bfloat16,
+    ):
+        super().__init__()
+        self.feature_dim = feature_dim
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
+        self.norm = norm
+        self.device = device
+        self.dtype = dtype
+        self.in_proj = nn.Conv2d(feature_dim, feature_dim * 3, 1, bias=False, device=device, dtype=dtype)
+        self.out_proj = nn.Conv2d(feature_dim, feature_dim, 1, device=device, dtype=dtype) if use_out_proj else nn.Identity()
+
+    def forward(self, X: torch.Tensor):
+        Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
+        A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-1) # Attend over the spatial dimension # TODO: is this correct?
+        Y = self.feature_map_attn(A) * Q
+        Y = self.out_proj(Y)
+        _, _, h, w = X.shape
+        Y = rearrange(Y, "b 1 c (x y) -> b c x y", x=h, y=w)
         Z = Y + X
         return Z
 
@@ -442,6 +516,42 @@ class Zeus(nn.Module):
         K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
+        Z = A * X
+        return Z
+    
+
+class ZeusConv(nn.Module):
+    """
+    Acausal Zeus Attention for images.
+    
+    "Zeus" because it is Hercules' daddy.
+    """
+
+    def __init__(
+            self, 
+            feature_dim: int, 
+            norm: nn.Module,
+            feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
+            feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
+            identity_weight: float = 0.5,
+            device: DEVICE_TYPE = 'cuda',
+            dtype: torch.dtype = torch.bfloat16,
+    ):
+        super().__init__()
+        self.feature_dim = feature_dim
+        self.feature_map_qkv = feature_map_qkv
+        self.feature_map_attn = feature_map_attn
+        self.norm = norm
+        self.device = device
+        self.dtype = dtype
+        self.identity_weight = identity_weight
+        self.in_proj = nn.Conv2d(feature_dim, feature_dim * 3, 1, bias=False, device=device, dtype=dtype)
+
+    def forward(self, X: torch.Tensor):
+        K, V = img_to_qkv(X, self.norm, self.in_proj, chunks=2)  # 2x (batch, 1, dim, h*w)
+        A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-1, keepdim=True)  # Attend over the spatial dimension # TODO: is this correct?
+        A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
+        A = rearrange(A, "b 1 c 1 -> b c 1 1")  # X.shape = (b c x y), A.shape = (b c 1 1)
         Z = A * X
         return Z
 

@@ -187,8 +187,20 @@ class PreNorm(nn.Module):
 ##########
     
 
-ATTENTION_TYPES = Union[attention.VanillaConv, attention.LinearConv]
-ATTENTION_CONSTRUCTOR_TYPES = Union[type(attention.VanillaConv), type(attention.LinearConv)]
+ATTENTION_TYPES = Union[
+    attention.VanillaConv, 
+    attention.LinearConv,
+    attention.HydraConv,
+    attention.HerculesConv,
+    attention.ZeusConv,
+]
+ATTENTION_CONSTRUCTOR_TYPES = Union[
+    type(attention.VanillaConv), 
+    type(attention.LinearConv),
+    type(attention.HydraConv),
+    type(attention.HerculesConv),
+    type(attention.ZeusConv),
+]
     
 class Unet(nn.Module):
     def __init__(
@@ -527,17 +539,17 @@ results_folder = Path("./results")
 results_folder.mkdir(exist_ok = True)
 save_and_sample_every = 1000
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-model = Unet(
-    dim=image_size,
-    channels=channels,
-    dim_mults=(1, 2, 4,)
-)
-model.to(device)
-
-def train(model: Unet, epochs: int = 6):
+def train(
+        model: Unet, 
+        epochs: int = 6, 
+        device: str | torch.device = "cpu", 
+        dtype: torch.dtype = torch.bfloat16,
+):
     optimizer = Adam(model.parameters(), lr=1e-3)
+    model = model.to(device=device, dtype=dtype)
+    model.train()
 
     losses = []
 
@@ -546,15 +558,15 @@ def train(model: Unet, epochs: int = 6):
             optimizer.zero_grad()
 
             batch_size = batch["pixel_values"].shape[0]
-            batch = batch["pixel_values"].to(device)
+            batch = batch["pixel_values"].to(device, dtype)
 
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
-            t = torch.randint(0, timesteps, (batch_size,), device=device).long()
+            t = torch.randint(0, timesteps, (batch_size,), device=device, dtype=dtype).long()
 
             loss = p_losses(model, batch, t, loss_type="huber")
 
             if step % 100 == 0:
-                print("Loss:", loss.item())
+                print(f"loss={loss.item()}, {epoch=}, {step=}")
                 losses.append(loss.item())
 
             loss.backward()
@@ -611,17 +623,17 @@ get_attn_settings = {
     "hydra": {
         "feature_map_qkv": feature_maps.cos_sim,  # TODO: pick correct feature maps
         "feature_map_out": feature_maps.cos_sim, 
-        "device": device,
+        "device": DEVICE,
     },
     "hercules": {
         "feature_map_qkv": feature_maps.cos_sim,
         "feature_map_out": feature_maps.cos_sim,
-        "device": device,
+        "device": DEVICE,
     },
     "zeus": {
         "feature_map_qkv": feature_maps.cos_sim,
         "feature_map_out": feature_maps.cos_sim,
-        "device": device,
+        "device": DEVICE,
     },
 }
 
@@ -667,9 +679,9 @@ def tests(args: argparse.Namespace) -> None:
             mid_attn_settings=mid_set,
             out_attn_settings=out_set,
         )
-        model.to(device)
+        model.to(DEVICE)
 
-        losses = train(model, epochs=1)
+        losses = train(model, epochs=1, device=DEVICE, dtype=torch.bfloat16)
         print(f"  Losses: {losses}")
 
     # TODO: save these results
