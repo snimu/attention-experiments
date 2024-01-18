@@ -332,6 +332,9 @@ class HydraCausal(nn.Module):
         Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
+        # TODO: 
+        #  Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
+        #     RuntimeError: The size of tensor a (112) must match the size of tensor b (49) at non-singleton dimension 3
         Y = self.out_proj(Y)
         Z = Y + X
         return Z
