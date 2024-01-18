@@ -681,7 +681,7 @@ def tests(args: argparse.Namespace) -> None:
     mid_attn_constructors, mid_attn_settings = get_attn_constructor_and_settings(args.mid_attn)
     out_attn_constructors, out_attn_settings = get_attn_constructor_and_settings(args.out_attn)
 
-    for experiment_num, (in_ac, in_set), (mid_ac, mid_set), (out_ac, out_set) in enumerate(
+    for experiment_num, ((in_ac, in_set), (mid_ac, mid_set), (out_ac, out_set)) in enumerate(
         itertools.product(
             zip(in_attn_constructors, in_attn_settings), 
             zip(mid_attn_constructors, mid_attn_settings),
