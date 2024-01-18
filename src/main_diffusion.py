@@ -569,7 +569,7 @@ def train(
 
             if step % 10 == 0:  # approximately 400 steps per epoch
                 print(f"loss={loss.item()}, {epoch=}, {step=}")
-                losses.append(loss.item())
+            losses.append(loss.item())
 
             loss.backward()
             optimizer.step()
