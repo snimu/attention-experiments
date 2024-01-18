@@ -602,24 +602,30 @@ def get_args() -> argparse.Namespace:
         help="The number of epochs to train for.",
     )
     parser.add_argument(
+        "--num_tries",
+        type=int,
+        default=10,
+        help="The number of tries per test setting.",
+    )
+    parser.add_argument(
         "--in_attn", 
         type=str, 
         default="linear", 
-        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],  # TODO: implement hydra, hercules, zeus with conv
+        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
         help="The attention mechanism to use for the input attention."
     )
     parser.add_argument(
         "--mid_attn", 
         type=str, 
         default="linear", 
-        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],  # TODO: implement hydra, hercules, zeus with conv
+        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
         help="The attention mechanism to use for the middle attention."
     )
     parser.add_argument(
         "--out_attn", 
         type=str, 
         default="linear", 
-        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],  # TODO: implement hydra, hercules, zeus with conv
+        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
         help="The attention mechanism to use for the output attention."
     )
 
@@ -627,7 +633,6 @@ def get_args() -> argparse.Namespace:
     return args
 
 
-# TODO: how to handle residual?
 get_attn_constructor = {
     "linear": attention.LinearConv,
     "vanilla": attention.VanillaConv,
@@ -641,18 +646,18 @@ get_attn_settings = {
     "linear": {},
     "vanilla": {},
     "hydra": {
-        "feature_map_qkv": feature_maps.cos_sim,  # TODO: pick correct feature maps
+        "feature_map_qkv": feature_maps.identity,
         "feature_map_out": feature_maps.cos_sim, 
         "device": DEVICE,
     },
     "hercules": {
-        "feature_map_qkv": feature_maps.cos_sim,
+        "feature_map_qkv": feature_maps.tanh,
         "feature_map_out": feature_maps.cos_sim,
         "device": DEVICE,
     },
     "zeus": {
-        "feature_map_qkv": feature_maps.cos_sim,
-        "feature_map_out": feature_maps.cos_sim,
+        "feature_map_qkv": feature_maps.tanh,
+        "feature_map_out": feature_maps.sigmoid,
         "device": DEVICE,
     },
 }
@@ -683,57 +688,53 @@ def tests(args: argparse.Namespace) -> None:
             zip(out_attn_constructors, out_attn_settings),
         )
     ):
-        print(f"Experiment {experiment_num}:")
-        print(f"  in_attn: {in_ac}, {in_set}")
-        print(f"  mid_attn: {mid_ac}, {mid_set}")
-        print(f"  out_attn: {out_ac}, {out_set}")
+        for trial_num in range(args.num_tries):
+            in_attn_name = get_attn_name.get(in_ac, "all")
+            mid_attn_name = get_attn_name.get(mid_ac, "all")
+            out_attn_name = get_attn_name.get(out_ac, "all")
 
-        # TODO: multiple steps per experiment should be possible
+            print(f"\n\nTraining with {in_attn_name}, {mid_attn_name}, {out_attn_name}...")
+            print(f"  Trial {trial_num} of {args.num_tries}...\n")
 
-        model = Unet(
-            dim=image_size,
-            channels=channels,
-            dim_mults=(1, 2, 4,),
-            in_attn_constructor=in_ac,
-            mid_attn_constructor=mid_ac,
-            out_attn_constructor=out_ac,
-            in_attn_settings=in_set,
-            mid_attn_settings=mid_set,
-            out_attn_settings=out_set,
-        )
-        model.to(DEVICE)
+            model = Unet(
+                dim=image_size,
+                channels=channels,
+                dim_mults=(1, 2, 4,),
+                in_attn_constructor=in_ac,
+                mid_attn_constructor=mid_ac,
+                out_attn_constructor=out_ac,
+                in_attn_settings=in_set,
+                mid_attn_settings=mid_set,
+                out_attn_settings=out_set,
+            )
+            model.to(DEVICE)
 
-        in_attn_name = get_attn_name.get(in_ac, "all")
-        mid_attn_name = get_attn_name.get(mid_ac, "all")
-        out_attn_name = get_attn_name.get(out_ac, "all")
+            losses = train(
+                model=model, 
+                epochs=args.epochs, 
+                device=DEVICE, 
+                dtype=torch.bfloat16,
+            )
 
-        print(f"\n\nTraining with {in_attn_name}, {mid_attn_name}, {out_attn_name}...")
-
-        losses = train(
-            model=model, 
-            epochs=args.epochs, 
-            device=DEVICE, 
-            dtype=torch.bfloat16,
-        )
-        print("DONE")
-
-        results = {
-            "in_attn": in_attn_name,
-            "mid_attn": mid_attn_name,
-            "out_attn": out_attn_name,
-            "epochs": args.epochs,
-            "last_loss": losses[-1],
-            "best_loss": min(losses),
-            "losses": str(losses),
-        }
-        df = pl.DataFrame(results)
-        
-        if args.save:
-            if not os.path.exists('results_diffusion.csv') or (not args.append and experiment_num == 0):
-                df.write_csv('results_diffusion.csv')
-            else:
-                with open('results_diffusion.csv', 'ab') as f:
-                    df.write_csv(f, include_header=False)
+            results = {
+                "in_attn": in_attn_name,
+                "mid_attn": mid_attn_name,
+                "out_attn": out_attn_name,
+                "epochs": args.epochs,
+                "last_loss": losses[-1],
+                "best_loss": min(losses),
+                "losses": str(losses),
+            }
+            df = pl.DataFrame(results)
+            
+            if args.save:
+                if not os.path.exists('results_diffusion.csv') or (not args.append and experiment_num == 0):
+                    df.write_csv('results_diffusion.csv')
+                else:
+                    with open('results_diffusion.csv', 'ab') as f:
+                        df.write_csv(f, include_header=False)
+            
+            print(f"DONE ({in_attn_name}, {mid_attn_name}, {out_attn_name}, {trial_num}/{args.num_tries})\n\n)")
 
     # Print final results
     df = pl.read_csv('results_diffusion.csv')
