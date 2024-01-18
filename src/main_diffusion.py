@@ -7,12 +7,14 @@ and modified for my own purposes.
 import argparse
 import itertools
 import math
+import os
 from functools import partial
 from inspect import isfunction
 from typing import Any, Union
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -565,7 +567,7 @@ def train(
 
             loss = p_losses(model, batch, t, loss_type="huber")
 
-            if step % 100 == 0:
+            if step % 100 == 0:  # TODO: change to reflect actual number of steps
                 print(f"loss={loss.item()}, {epoch=}, {step=}")
                 losses.append(loss.item())
 
@@ -582,6 +584,23 @@ def train(
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     
+    parser.add_argument(
+        "-s",
+        "--save",
+        action="store_true",
+        help="Whether to save the results of the tests.",
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Whether to append to the results of previous tests, instead of overwriting them (default).",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=6,
+        help="The number of epochs to train for.",
+    )
     parser.add_argument(
         "--in_attn", 
         type=str, 
@@ -616,6 +635,7 @@ get_attn_constructor = {
     "hercules": attention.HerculesConv,
     "zeus": attention.ZeusConv,
 }
+get_attn_name = {v: k for k, v in get_attn_constructor.items()}
 
 get_attn_settings = {
     "linear": {},
@@ -668,6 +688,8 @@ def tests(args: argparse.Namespace) -> None:
         print(f"  mid_attn: {mid_ac}, {mid_set}")
         print(f"  out_attn: {out_ac}, {out_set}")
 
+        # TODO: multiple steps per experiment should be possible
+
         model = Unet(
             dim=image_size,
             channels=channels,
@@ -681,7 +703,42 @@ def tests(args: argparse.Namespace) -> None:
         )
         model.to(DEVICE)
 
-        losses = train(model, epochs=1, device=DEVICE, dtype=torch.bfloat16)
-        print(f"  Losses: {losses}")
+        in_attn_name = get_attn_name.get(in_ac, "all")
+        mid_attn_name = get_attn_name.get(mid_ac, "all")
+        out_attn_name = get_attn_name.get(out_ac, "all")
 
-    # TODO: save these results
+        print(f"\n\nTraining with {in_attn_name}, {mid_attn_name}, {out_attn_name}...")
+
+        losses = train(
+            model=model, 
+            epochs=args.epochs, 
+            device=DEVICE, 
+            dtype=torch.bfloat16,
+        )
+        print("DONE")
+
+        results = {
+            "in_attn": in_attn_name,
+            "mid_attn": mid_attn_name,
+            "out_attn": out_attn_name,
+            "epochs": args.epochs,
+            "last_loss": losses[-1],
+            "best_loss": min(losses),
+            "losses": str(losses),
+        }
+        df = pl.DataFrame(results)
+        
+        if args.save:
+            if not os.path.exists('results_diffusion.csv') or (not args.append and experiment_num == 0):
+                df.write_csv('results_diffusion.csv')
+            else:
+                with open('results_diffusion.csv', 'ab') as f:
+                    df.write_csv(f, include_header=False)
+
+    # Print final results
+    df = pl.read_csv('results_diffusion.csv')
+    df = df.sort(by="best_loss")
+    print("\n\nSorted Results:\n\n")
+    print(str(df.columns[:6]))
+    for row in df.iter_rows():
+        print(str(row[:6]))
