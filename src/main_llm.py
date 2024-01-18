@@ -541,7 +541,7 @@ def train(num_steps, attn_type, **kwargs):
 
     val_loss = None
     val_acc = None
-    val_perplexity = None
+    val_pplx = None
 
     train_losses = []
     val_losses = []
@@ -619,7 +619,7 @@ def train(num_steps, attn_type, **kwargs):
                 # Potential # bug warning: We're disabling the eval switch here as the nn.MultiheadAttention class fails in eval mode w/ a pure bfloat16 network. Functionally they should be the same; however, care should be taken if implementing something with clear differences between train and eval, like dropout.
                 #net.eval()
 
-                val_acc, val_loss, val_perplexity = eval(net)
+                val_acc, val_loss, val_pplx = eval(net)
                 val_losses.append(val_loss)
                 average_time_per_batch = 1e-3 * starter.elapsed_time(ender)/hyp['opt']['eval_iter']
                 # You can use this variable to print out the parameter counts of the network if you want, though we aren't printing this out in this particular version.
