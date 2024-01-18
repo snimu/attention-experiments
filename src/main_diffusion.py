@@ -610,21 +610,21 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--in_attn", 
         type=str, 
-        default="linear", 
+        default="all", 
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
         help="The attention mechanism to use for the input attention."
     )
     parser.add_argument(
         "--mid_attn", 
         type=str, 
-        default="linear", 
+        default="all", 
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
         help="The attention mechanism to use for the middle attention."
     )
     parser.add_argument(
         "--out_attn", 
         type=str, 
-        default="linear", 
+        default="all", 
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
         help="The attention mechanism to use for the output attention."
     )
