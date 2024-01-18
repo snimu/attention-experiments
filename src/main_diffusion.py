@@ -547,7 +547,7 @@ def train(
         model: Unet, 
         epochs: int = 6, 
         device: str | torch.device = "cpu", 
-        dtype: torch.dtype = torch.bfloat16,
+        dtype: torch.dtype = torch.float32,
 ):
     optimizer = Adam(model.parameters(), lr=1e-3)
     model = model.to(device=device, dtype=dtype)
@@ -713,7 +713,7 @@ def tests(args: argparse.Namespace) -> None:
                 model=model, 
                 epochs=args.epochs, 
                 device=DEVICE, 
-                dtype=torch.bfloat16,
+                dtype=torch.float32,
             )
 
             results = {
