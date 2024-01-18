@@ -742,3 +742,8 @@ def tests(args: argparse.Namespace) -> None:
     print(str(df.columns[:6]))
     for row in df.iter_rows():
         print(str(row[:6]))
+
+
+if __name__ == "__main__":
+    args = get_args()
+    tests(args)
