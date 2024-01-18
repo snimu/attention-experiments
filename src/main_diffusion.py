@@ -647,17 +647,17 @@ get_attn_settings = {
     "vanilla": {},
     "hydra": {
         "feature_map_qkv": feature_maps.identity,
-        "feature_map_out": feature_maps.cos_sim, 
+        "feature_map_attn": feature_maps.cos_sim, 
         "device": DEVICE,
     },
     "hercules": {
         "feature_map_qkv": feature_maps.tanh,
-        "feature_map_out": feature_maps.cos_sim,
+        "feature_map_attn": feature_maps.cos_sim,
         "device": DEVICE,
     },
     "zeus": {
         "feature_map_qkv": feature_maps.tanh,
-        "feature_map_out": feature_maps.sigmoid,
+        "feature_map_attn": feature_maps.sigmoid,
         "device": DEVICE,
     },
 }
