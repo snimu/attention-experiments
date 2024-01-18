@@ -280,7 +280,7 @@ class Unet(nn.Module):
                     [
                         block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
                         block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
-                        dim_out, out_attn_constructor(dim_out, norm=nn.GroupNorm(1, dim_out), **out_attn_settings),
+                        out_attn_constructor(dim_out, norm=nn.GroupNorm(1, dim_out), **out_attn_settings),
                         Upsample(dim_out, dim_in)
                         if not is_last
                         else nn.Conv2d(dim_out, dim_in, 3, padding=1),
