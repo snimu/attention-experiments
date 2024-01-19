@@ -572,7 +572,7 @@ def train(
             loss = p_losses(model, batch, t, loss_type="huber")
             time_taken = perf_counter() - start
 
-            if step % 1 == 0:  # approximately 400 steps per epoch
+            if step % 10 == 0:  # approximately 400 steps per epoch
                 print(f"loss={loss.item()}, {epoch=}, {step=}, {time_taken=}")
             losses.append(loss.item())
             times_taken.append(time_taken)
