@@ -551,6 +551,7 @@ def train(
 ):
     optimizer = Adam(model.parameters(), lr=1e-3)
     model = model.to(device=device, dtype=dtype)
+    model = torch.compile(model)
     model.train()
 
     losses = []
@@ -707,7 +708,6 @@ def tests(args: argparse.Namespace) -> None:
                 mid_attn_settings=mid_set,
                 out_attn_settings=out_set,
             )
-            model.to(DEVICE)
 
             losses = train(
                 model=model, 
