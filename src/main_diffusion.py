@@ -617,21 +617,21 @@ def get_args() -> argparse.Namespace:
         "--in_attn", 
         type=str, 
         default="all", 
-        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
+        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the input attention."
     )
     parser.add_argument(
         "--mid_attn", 
         type=str, 
         default="all", 
-        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
+        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the middle attention."
     )
     parser.add_argument(
         "--out_attn", 
         type=str, 
         default="all", 
-        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus"],
+        choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the output attention."
     )
 
@@ -640,6 +640,7 @@ def get_args() -> argparse.Namespace:
 
 
 get_attn_constructor = {
+    "identity": nn.Identity,
     "linear": attention.LinearConv,
     "vanilla": attention.VanillaConv,
     "hydra": attention.HydraConv,
@@ -649,6 +650,7 @@ get_attn_constructor = {
 get_attn_name = {v: k for k, v in get_attn_constructor.items()}
 
 get_attn_settings = {
+    "identity": {},
     "linear": {},
     "vanilla": {},
     "hydra": {
@@ -672,9 +674,9 @@ get_attn_settings = {
 def get_attn_constructor_and_settings(attn: str) -> tuple[ATTENTION_CONSTRUCTOR_TYPES, dict[str, Any]]:
     if attn == "all": 
         return [
-            get_attn_constructor[a] for a in ["linear", "vanilla", "hydra", "hercules", "zeus"]
+            get_attn_constructor[a] for a in ["linear", "vanilla", "hydra", "hercules", "zeus", "identity"]
         ], [
-            get_attn_settings[a] for a in ["linear", "vanilla", "hydra", "hercules", "zeus"]
+            get_attn_settings[a] for a in ["linear", "vanilla", "hydra", "hercules", "zeus", "identity"]
         ]
     else:
         return [get_attn_constructor[attn]], [get_attn_settings[attn]]
