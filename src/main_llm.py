@@ -531,6 +531,7 @@ def train(num_steps, attn_type, **kwargs):
     # It can bork your pre-existing setup though if you're not careful, so bewarb! D: :D
     
     # Since we're dynamically changing the sequence length during training, we've turned off the compiling since that's faster for now.
+    # TODO: check if this wouldn't help anyway with my super inefficient attn mechs
     if False: #using_pytorch_2:
         net = torch.compile(net)
 
