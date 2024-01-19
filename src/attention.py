@@ -363,15 +363,11 @@ class HydraConv(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
-        A = torch.sum(self.feature_map_qkv(K) * V, dim=-1, keepdim=True)  # Attend over the spatial dimension # TODO: is this correct?
-        print(f"{A.shape=}, {Q.shape=}, {V.shape=}, {K.shape=}")
+        A = torch.sum(self.feature_map_qkv(K) * V, dim=-1, keepdim=True)
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
-        # TODO: 
-        #  Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
-        #     RuntimeError: The size of tensor a (112) must match the size of tensor b (49) at non-singleton dimension 3
-        Y = self.out_proj(Y)
         _, _, h, w = X.shape
         Y = rearrange(Y, "b 1 c (x y) -> b c x y", x=h, y=w)
+        Y = self.out_proj(Y)
         Z = Y + X
         return Z
 
@@ -442,11 +438,11 @@ class HerculesConv(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
-        A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-1) # Attend over the spatial dimension # TODO: is this correct?
+        A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-1, keepdim=True)
         Y = self.feature_map_attn(A) * Q
-        Y = self.out_proj(Y)
         _, _, h, w = X.shape
         Y = rearrange(Y, "b 1 c (x y) -> b c x y", x=h, y=w)
+        Y = self.out_proj(Y)
         Z = Y + X
         return Z
 
@@ -549,7 +545,7 @@ class ZeusConv(nn.Module):
         self.device = device
         self.dtype = dtype
         self.identity_weight = identity_weight
-        self.in_proj = nn.Conv2d(feature_dim, feature_dim * 3, 1, bias=False, device=device, dtype=dtype)
+        self.in_proj = nn.Conv2d(feature_dim, feature_dim * 2, 1, bias=False, device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor):
         K, V = img_to_qkv(X, self.norm, self.in_proj, chunks=2)  # 2x (batch, 1, dim, h*w)
