@@ -332,9 +332,6 @@ class HydraCausal(nn.Module):
         Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
-        # TODO: 
-        #  Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
-        #     RuntimeError: The size of tensor a (112) must match the size of tensor b (49) at non-singleton dimension 3
         Y = self.out_proj(Y)
         Z = Y + X
         return Z
@@ -366,8 +363,12 @@ class HydraConv(nn.Module):
 
     def forward(self, X: torch.Tensor):
         Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
-        A = torch.sum(self.feature_map_qkv(K) * V, dim=-1)  # Attend over the spatial dimension # TODO: is this correct?
+        A = torch.sum(self.feature_map_qkv(K) * V, dim=-1, keepdim=True)  # Attend over the spatial dimension # TODO: is this correct?
+        print(f"{A.shape=}, {Q.shape=}, {V.shape=}, {K.shape=}")
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
+        # TODO: 
+        #  Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
+        #     RuntimeError: The size of tensor a (112) must match the size of tensor b (49) at non-singleton dimension 3
         Y = self.out_proj(Y)
         _, _, h, w = X.shape
         Y = rearrange(Y, "b 1 c (x y) -> b c x y", x=h, y=w)
