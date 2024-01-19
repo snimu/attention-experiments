@@ -12,6 +12,7 @@ from functools import partial
 from inspect import isfunction
 from typing import Any, Union
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 import polars as pl
@@ -548,13 +549,14 @@ def train(
         epochs: int = 6, 
         device: str | torch.device = "cpu", 
         dtype: torch.dtype = torch.float32,
-):
+) -> tuple[list[float], float]:
     optimizer = Adam(model.parameters(), lr=1e-3)
     model = model.to(device=device, dtype=dtype)
-    model = torch.compile(model)
+    # model = torch.compile(model)
     model.train()
 
     losses = []
+    times_taken = []
 
     for epoch in range(epochs):
         for step, batch in enumerate(dataloader):
@@ -566,16 +568,19 @@ def train(
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
             t = torch.randint(0, timesteps, (batch_size,), device=device, dtype=dtype).long()
 
+            start = perf_counter()
             loss = p_losses(model, batch, t, loss_type="huber")
+            time_taken = perf_counter() - start
 
-            if step % 10 == 0:  # approximately 400 steps per epoch
-                print(f"loss={loss.item()}, {epoch=}, {step=}")
+            if step % 1 == 0:  # approximately 400 steps per epoch
+                print(f"loss={loss.item()}, {epoch=}, {step=}, {time_taken=}")
             losses.append(loss.item())
+            times_taken.append(time_taken)
 
             loss.backward()
             optimizer.step()
 
-    return losses
+    return losses, torch.tensor(times_taken).mean().item()
 
 
 ##################
@@ -709,7 +714,7 @@ def tests(args: argparse.Namespace) -> None:
                 out_attn_settings=out_set,
             )
 
-            losses = train(
+            losses, avg_time_taken = train(
                 model=model, 
                 epochs=args.epochs, 
                 device=DEVICE, 
@@ -724,6 +729,7 @@ def tests(args: argparse.Namespace) -> None:
                 "last_loss": losses[-1],
                 "best_loss": min(losses),
                 "losses": str(losses),
+                "avg_time_taken": avg_time_taken,
             }
             df = pl.DataFrame(results)
             
