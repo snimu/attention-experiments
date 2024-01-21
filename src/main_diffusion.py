@@ -572,10 +572,10 @@ def train(
             loss = p_losses(model, batch, t, loss_type="huber")
             time_taken = perf_counter() - start
 
-            if step % 10 == 0:  # approximately 400 steps per epoch
-                print(f"loss={loss.item():.4f}, {epoch=}, {step=}, {time_taken=}")
             losses.append(loss.item())
             times_taken.append(time_taken)
+            if step % 40 == 0 and step != 0:  # approximately 400 steps per epoch
+                print(f"5_step_running_loss={torch.tensor(losses[:-5]).mean().item():.4f}, {epoch=}, {step=}, {time_taken=}")
 
             loss.backward()
             optimizer.step()
