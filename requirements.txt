@@ -4,6 +4,6 @@ tiktoken
 rotary-embedding-torch
 rich
 polars
-einpos
+einops
 tqdm
 datasets
