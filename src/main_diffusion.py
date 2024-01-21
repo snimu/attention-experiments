@@ -398,23 +398,60 @@ def sigmoid_beta_schedule(timesteps):
     return torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
 
 
-timesteps = 300
+# Initialize global variables to None
+(
+    TIMESTEPS,
+    BETAS, 
+    ALPHAS, 
+    ALPHAS_CUMPROD, 
+    ALPHAS_CUMPROD_PREV, 
+    SQRT_RECIP_ALPHAS, 
+    SQRT_ALPHAS_CUMPROD, 
+    SQRT_ONE_MINUS_ALPHAS_CUMPROD, 
+    POSTERIOR_VARIANCE,
+) = [None] * 9
 
-# define beta schedule
-betas = linear_beta_schedule(timesteps=timesteps)
 
-# define alphas 
-alphas = 1. - betas
-alphas_cumprod = torch.cumprod(alphas, axis=0)
-alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
-sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
+# Call this in main every time to reset the global variables to their default values
+def prepare_posterior_etc():
+    timesteps = 300
 
-# calculations for diffusion q(x_t | x_{t-1}) and others
-sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
-sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+    # define beta schedule
+    betas = linear_beta_schedule(timesteps=timesteps)
 
-# calculations for posterior q(x_{t-1} | x_t, x_0)
-posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+    # define alphas 
+    alphas = 1. - betas
+    alphas_cumprod = torch.cumprod(alphas, axis=0)
+    alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+    sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
+
+    # calculations for diffusion q(x_t | x_{t-1}) and others
+    sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
+    sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+
+    # calculations for posterior q(x_{t-1} | x_t, x_0)
+    posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+
+    global \
+        TIMESTEPS, \
+        BETAS, \
+        ALPHAS, \
+        ALPHAS_CUMPROD, \
+        ALPHAS_CUMPROD_PREV, \
+        SQRT_RECIP_ALPHAS, \
+        SQRT_ALPHAS_CUMPROD, \
+        SQRT_ONE_MINUS_ALPHAS_CUMPROD, \
+        POSTERIOR_VARIANCE
+
+    TIMESTEPS = timesteps
+    BETAS = betas
+    ALPHAS = alphas
+    ALPHAS_CUMPROD = alphas_cumprod
+    ALPHAS_CUMPROD_PREV = alphas_cumprod_prev
+    SQRT_RECIP_ALPHAS = sqrt_recip_alphas
+    SQRT_ALPHAS_CUMPROD = sqrt_alphas_cumprod
+    SQRT_ONE_MINUS_ALPHAS_CUMPROD = sqrt_one_minus_alphas_cumprod
+    POSTERIOR_VARIANCE = posterior_variance
 
 
 def extract(a, t, x_shape):
@@ -428,9 +465,9 @@ def q_sample(x_start, t, noise=None):
     if noise is None:
         noise = torch.randn_like(x_start)
 
-    sqrt_alphas_cumprod_t = extract(sqrt_alphas_cumprod, t, x_start.shape)
+    sqrt_alphas_cumprod_t = extract(SQRT_ALPHAS_CUMPROD, t, x_start.shape)
     sqrt_one_minus_alphas_cumprod_t = extract(
-        sqrt_one_minus_alphas_cumprod, t, x_start.shape
+        SQRT_ONE_MINUS_ALPHAS_CUMPROD, t, x_start.shape
     )
 
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
@@ -462,27 +499,32 @@ def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1"):
 ## DATASET ##
 #############
 
-# TODO: make this more modular
-dataset = load_dataset("fashion_mnist")
-image_size = 28
-channels = 1
-batch_size = 512
+def create_dataloader() -> [DataLoader, int, int]:
+    dataset = load_dataset("fashion_mnist")
+    image_size = 28
+    channels = 1
+    batch_size = 512
 
-# define image transformations (e.g. using torchvision)
-transform = Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: (t * 2) - 1)
-])
+    # define image transformations (e.g. using torchvision)
+    transform = Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda t: (t * 2) - 1)
+    ])
 
-# define function
-def transforms(examples):
-   examples["pixel_values"] = [transform(image.convert("L")) for image in examples["image"]]
-   del examples["image"]
+    # define function
+    def transformations(examples):
+        examples["pixel_values"] = [transform(image.convert("L")) for image in examples["image"]]
+        del examples["image"]
 
-   return examples
+        return examples
 
-transformed_dataset = dataset.with_transform(transforms).remove_columns("label")
+    transformed_dataset = dataset.with_transform(transformations).remove_columns("label")
+
+    dataloader = DataLoader(
+        transformed_dataset["train"], batch_size=batch_size, shuffle=True, num_workers=os.cpu_count()
+    )
+    return dataloader, channels, image_size
 
 
 ##############
@@ -491,11 +533,11 @@ transformed_dataset = dataset.with_transform(transforms).remove_columns("label")
 
 @torch.no_grad()
 def p_sample(model, x, t, t_index):
-    betas_t = extract(betas, t, x.shape)
+    betas_t = extract(BETAS, t, x.shape)
     sqrt_one_minus_alphas_cumprod_t = extract(
-        sqrt_one_minus_alphas_cumprod, t, x.shape
+        SQRT_ONE_MINUS_ALPHAS_CUMPROD, t, x.shape
     )
-    sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
+    sqrt_recip_alphas_t = extract(SQRT_RECIP_ALPHAS, t, x.shape)
     
     # Equation 11 in the paper
     # Use our model (noise predictor) to predict the mean
@@ -506,10 +548,11 @@ def p_sample(model, x, t, t_index):
     if t_index == 0:
         return model_mean
     else:
-        posterior_variance_t = extract(posterior_variance, t, x.shape)
+        posterior_variance_t = extract(POSTERIOR_VARIANCE, t, x.shape)
         noise = torch.randn_like(x)
         # Algorithm 2 line 4:
         return model_mean + torch.sqrt(posterior_variance_t) * noise 
+
 
 # Algorithm 2 (including returning all images)
 @torch.no_grad()
@@ -521,10 +564,11 @@ def p_sample_loop(model, shape):
     img = torch.randn(shape, device=device)
     imgs = []
 
-    for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
+    for i in tqdm(reversed(range(0, TIMESTEPS)), desc='sampling loop time step', total=TIMESTEPS):
         img = p_sample(model, img, torch.full((b,), i, device=device, dtype=torch.long), i)
         imgs.append(img.cpu().numpy())
     return imgs
+
 
 @torch.no_grad()
 def sample(model, image_size, batch_size=16, channels=3):
@@ -563,7 +607,7 @@ def train(
             batch = batch["pixel_values"].to(device, dtype)
 
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
-            t = torch.randint(0, timesteps, (batch_size,), device=device, dtype=dtype).long()
+            t = torch.randint(0, TIMESTEPS, (batch_size,), device=device, dtype=dtype).long()
 
             start = perf_counter()
             loss = p_losses(model, batch, t, loss_type="huber")
@@ -712,6 +756,12 @@ def tests(args: argparse.Namespace) -> None:
             )
             print(f"  Trial {trial_num+1} of {args.num_tries}...\n")
 
+            # Reset global variables
+            prepare_posterior_etc()
+
+            # Reset dl
+            dataloader, channels, image_size = create_dataloader()
+
             model = Unet(
                 dim=image_size,
                 channels=channels,
@@ -722,11 +772,6 @@ def tests(args: argparse.Namespace) -> None:
                 in_attn_settings=in_set,
                 mid_attn_settings=mid_set,
                 out_attn_settings=out_set,
-            )
-
-            # Reset dl
-            dataloader = DataLoader(
-                transformed_dataset["train"], batch_size=batch_size, shuffle=True, num_workers=os.cpu_count()
             )
 
             losses, times_taken, avg_time_taken = train(
