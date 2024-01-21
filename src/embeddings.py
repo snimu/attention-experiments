@@ -2,6 +2,8 @@ import torch
 
 
 # The rotary embs implementation is taken from https://blog.eleuther.ai/rotary-embeddings/ 
+# I just added the .squeeze() to cos_cached and sin_cached to make it work with my code
+
 class Rotary(torch.nn.Module):
     def __init__(self, dim, base=10000):
         super().__init__()
@@ -20,7 +22,7 @@ class Rotary(torch.nn.Module):
             emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
             self.cos_cached = emb.cos()[:, None, None, :]
             self.sin_cached = emb.sin()[:, None, None, :]
-        return self.cos_cached, self.sin_cached
+        return self.cos_cached.squeeze(), self.sin_cached.squeeze()
 
 
 # rotary pos emb helpers:
