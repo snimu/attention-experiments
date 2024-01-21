@@ -573,7 +573,7 @@ def train(
             time_taken = perf_counter() - start
 
             if step % 10 == 0:  # approximately 400 steps per epoch
-                print(f"loss={loss.item()}, {epoch=}, {step=}, {time_taken=}")
+                print(f"loss={loss.item():.4f}, {epoch=}, {step=}, {time_taken=}")
             losses.append(loss.item())
             times_taken.append(time_taken)
 
