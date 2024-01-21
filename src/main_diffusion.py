@@ -484,9 +484,6 @@ def transforms(examples):
 
 transformed_dataset = dataset.with_transform(transforms).remove_columns("label")
 
-# create dataloader
-dataloader = DataLoader(transformed_dataset["train"], batch_size=batch_size, shuffle=True, num_workers=os.cpu_count())
-
 
 ##############
 ## SAMPLING ##
@@ -546,6 +543,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def train(
         model: Unet, 
+        dataloader: DataLoader,
         epochs: int = 6, 
         device: str | torch.device = "cpu", 
         dtype: torch.dtype = torch.float32,
@@ -726,12 +724,19 @@ def tests(args: argparse.Namespace) -> None:
                 out_attn_settings=out_set,
             )
 
+            # Reset dl
+            dataloader = DataLoader(
+                transformed_dataset["train"], batch_size=batch_size, shuffle=True, num_workers=os.cpu_count()
+            )
+
             losses, times_taken, avg_time_taken = train(
                 model=model, 
+                dataloader=dataloader,
                 epochs=args.epochs, 
                 device=DEVICE, 
                 dtype=torch.float32,
             )
+            del model, dataloader  # make sure to free up memory
 
             results = {
                 "in_attn": in_attn_name,
