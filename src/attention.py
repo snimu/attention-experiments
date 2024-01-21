@@ -17,6 +17,7 @@ from rotary_embedding_torch import RotaryEmbedding
 from einops import rearrange
 
 from feature_maps import cos_sim, identity
+import embeddings
 
 
 DEVICE_TYPE = Union[str, int, torch.device]
@@ -326,10 +327,13 @@ class HydraCausal(nn.Module):
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor):
+        cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        # Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         Y = self.out_proj(Y)
