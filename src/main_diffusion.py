@@ -746,12 +746,13 @@ def tests(args: argparse.Namespace) -> None:
             print(f"DONE ({in_attn_name}, {mid_attn_name}, {out_attn_name}, {trial_num}/{args.num_tries})\n\n)")
 
     # Print final results
-    df = pl.read_csv('results_diffusion.csv')
-    df = df.sort(by="best_loss")
-    print("\n\nSorted Results:\n\n")
-    print(str(df.columns[:6]))
-    for row in df.iter_rows():
-        print(str(row[:6]))
+    if args.save: 
+        df = pl.read_csv('results_diffusion.csv')
+        df = df.sort(by="best_loss")
+        print("\n\nSorted Results:\n\n")
+        print(str(df.columns[:6]))
+        for row in df.iter_rows():
+            print(str(row[:6]))
 
 
 if __name__ == "__main__":
