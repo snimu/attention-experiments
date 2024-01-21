@@ -753,7 +753,7 @@ def train_and_eval(
                 "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
                 "num_tries": num_tries,
                 "num_steps": num_steps,
-                "avg_time_s": sum(time_list)/len(time_list),
+                "avg_time_secs": sum(time_list)/len(time_list),
                 **{
                     f"val_losses_{i+1}": str(val_losses_list[i])
                     for i in range(num_tries)
@@ -822,7 +822,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--test_properties", 
         type=str, 
-        default=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"], 
+        default=["none", "use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"], 
         choices=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"],
         nargs="+",
     )
