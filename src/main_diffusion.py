@@ -634,6 +634,12 @@ def get_args() -> argparse.Namespace:
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the output attention."
     )
+    parser.add_argument(
+        "--seed", 
+        type=int,
+        default=42,
+        help="The random seed to use.",
+    )
 
     args = parser.parse_args()
     return args
@@ -697,6 +703,7 @@ def tests(args: argparse.Namespace) -> None:
             zip(out_attn_constructors, out_attn_settings),
         )
     ):
+        torch.manual_seed(args.seed)
         for trial_num in range(args.num_tries):
             in_attn_name = get_attn_name.get(in_ac, "all")
             mid_attn_name = get_attn_name.get(mid_ac, "all")
