@@ -546,6 +546,9 @@ def train(num_steps, attn_type, **kwargs):
 
     train_losses = []
     val_losses = []
+    train_accs = []
+    val_accs = []
+    avg_batch_times = []
 
     batch_iter_kwargs = {'data_dict': data, 'key': 'train', 'batchsize': batchsize, 'num_steps': total_microbatch_steps, 'sequence_length': hyp['misc']['sequence_length']}
 
@@ -566,6 +569,7 @@ def train(num_steps, attn_type, **kwargs):
         if crnt_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not crnt_steps % hyp['opt']['eval_iter'] == 0:
             train_acc = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss = loss.detach().cpu().item()
+            train_accs.append(train_acc)
             train_losses.append(train_loss)
             train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': crnt_steps, 'train_loss': train_loss, 'train_acc': train_acc}
             print_training_details(list(map(partial(format_for_table, locals=train_summary_variables), logging_columns_list)))
@@ -621,8 +625,10 @@ def train(num_steps, attn_type, **kwargs):
                 #net.eval()
 
                 val_acc, val_loss, val_pplx = eval(net)
+                val_accs.append(val_acc)
                 val_losses.append(val_loss)
                 average_time_per_batch = 1e-3 * starter.elapsed_time(ender)/hyp['opt']['eval_iter']
+                avg_batch_times.append(average_time_per_batch)
                 # You can use this variable to print out the parameter counts of the network if you want, though we aren't printing this out in this particular version.
                 a100_mfu, _, param_counts = get_net_mfu_and_param_counts(net, current_batchsize, current_sequence_length, microbatches_since_last_eval/hyp['opt']['eval_iter'], avg_time_per_batch=average_time_per_batch)
                 microbatches_since_last_eval = 0 # necessary for accurate mfu counts. How totally necessary is mfu here if we're mainly using wallclock time?
@@ -636,7 +642,7 @@ def train(num_steps, attn_type, **kwargs):
                 net.train() # Functionally shouldn't do anything with the base network, just adding this to guard against any bugs for any future changes that do require this <3 <3 <3
         microbatch_step += 1
 
-    return net, val_loss, train_losses, val_losses # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
+    return net, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times
 
 
 def get_use_out_proj_vals(attn_type: str, default: bool):
@@ -732,7 +738,7 @@ def train_and_eval(
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter_ns()
-                _, val_loss, train_losses, val_losses = train(num_steps=num_steps, attn_type=attn_type, **setting)
+                _, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times = train(num_steps=num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter_ns() - t0)
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
@@ -754,6 +760,18 @@ def train_and_eval(
                 },
                 **{
                     f"train_losses_{i+1}": str(train_losses_list[i])
+                    for i in range(num_tries)
+                },
+                **{
+                    f"train_accs_{i+1}": str(train_accs[i])
+                    for i in range(num_tries)
+                }
+                **{
+                    f"val_accs_{i+1}": str(val_accs[i])
+                    for i in range(num_tries)
+                },
+                **{
+                    f"avg_batch_times_{i+1}": str(avg_batch_times[i])
                     for i in range(num_tries)
                 },
             }
