@@ -822,8 +822,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--test_properties", 
         type=str, 
-        default=["none", "use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"], 
-        choices=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"],
+        default=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"], 
+        choices=["none", "use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"],
         nargs="+",
     )
     parser.add_argument("--seed", type=int, default=42)
