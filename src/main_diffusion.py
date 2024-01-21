@@ -743,7 +743,7 @@ def tests(args: argparse.Namespace) -> None:
                     with open('results_diffusion.csv', 'ab') as f:
                         df.write_csv(f, include_header=False)
             
-            print(f"DONE ({in_attn_name}, {mid_attn_name}, {out_attn_name}, {trial_num}/{args.num_tries})\n\n)")
+            print(f"DONE ({in_attn_name}, {mid_attn_name}, {out_attn_name}, {trial_num+1}/{args.num_tries})\n\n)")
 
     # Print final results
     if args.save: 
