@@ -706,7 +706,7 @@ def tests(args: argparse.Namespace) -> None:
                 f"\n\nExperiment {experiment_num+1}/{num_experiments}: "
                 f"{in_attn_name}, {mid_attn_name}, {out_attn_name}..."
             )
-            print(f"  Trial {trial_num} of {args.num_tries}...\n")
+            print(f"  Trial {trial_num+1} of {args.num_tries}...\n")
 
             model = Unet(
                 dim=image_size,
