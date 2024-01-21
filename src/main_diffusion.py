@@ -485,7 +485,7 @@ def transforms(examples):
 transformed_dataset = dataset.with_transform(transforms).remove_columns("label")
 
 # create dataloader
-dataloader = DataLoader(transformed_dataset["train"], batch_size=batch_size, shuffle=True)
+dataloader = DataLoader(transformed_dataset["train"], batch_size=batch_size, shuffle=True, num_workers=os.cpu_count())
 
 
 ##############
