@@ -466,7 +466,7 @@ def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1"):
 dataset = load_dataset("fashion_mnist")
 image_size = 28
 channels = 1
-batch_size = 1024
+batch_size = 512
 
 # define image transformations (e.g. using torchvision)
 transform = Compose([
