@@ -549,7 +549,7 @@ def train(
         epochs: int = 6, 
         device: str | torch.device = "cpu", 
         dtype: torch.dtype = torch.float32,
-) -> tuple[list[float], float]:
+) -> tuple[list[float], list[float], float]:
     optimizer = Adam(model.parameters(), lr=1e-3)
     model = model.to(device=device, dtype=dtype)
     # model = torch.compile(model)
@@ -580,7 +580,7 @@ def train(
             loss.backward()
             optimizer.step()
 
-    return losses, torch.tensor(times_taken).mean().item()
+    return losses, times_taken, torch.tensor(times_taken).mean().item()
 
 
 ##################
@@ -716,7 +716,7 @@ def tests(args: argparse.Namespace) -> None:
                 out_attn_settings=out_set,
             )
 
-            losses, avg_time_taken = train(
+            losses, times_taken, avg_time_taken = train(
                 model=model, 
                 epochs=args.epochs, 
                 device=DEVICE, 
@@ -730,8 +730,9 @@ def tests(args: argparse.Namespace) -> None:
                 "epochs": args.epochs,
                 "last_loss": losses[-1],
                 "best_loss": min(losses),
-                "losses": str(losses),
                 "avg_time_taken": avg_time_taken,
+                "times_taken": str(times_taken),
+                "losses": str(losses),
             }
             df = pl.DataFrame(results)
             
