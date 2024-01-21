@@ -13,7 +13,6 @@ from typing import Callable, Union
 
 import torch 
 from torch import nn 
-from rotary_embedding_torch import RotaryEmbedding
 from einops import rearrange
 
 from feature_maps import cos_sim, identity
@@ -21,11 +20,6 @@ import embeddings
 
 
 DEVICE_TYPE = Union[str, int, torch.device]
-
-
-def embed_rotary(*args: torch.Tensor, dim: int, device="cuda", dtype=torch.bfloat16) -> list[torch.Tensor]:
-    rot_emb = RotaryEmbedding(dim // 2)  # rotary embedding is half the size of the dim
-    return [rot_emb.rotate_queries_or_keys(arg.cpu()).to(device, dtype) for arg in args]  # TODO: why does this not work on CUDA?
 
 
 class TorchMHACausal(nn.Module):
@@ -91,6 +85,7 @@ class Vanilla(nn.Module):
         self.norm = norm
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype)
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """Q, K, V: (batch, seq_len, dim)"""
@@ -99,6 +94,7 @@ class Vanilla(nn.Module):
         dim_per_head = feature_dim // self.num_heads
         assert dim_per_head % 2 == 0
 
+        cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
 
         Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
@@ -108,8 +104,8 @@ class Vanilla(nn.Module):
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
-
-        Q, K = embed_rotary(Q, K, dim=dim_per_head, device=self.device, dtype=self.dtype)
+        
+        Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim_per_head))
@@ -148,6 +144,7 @@ class VanillaCausal(nn.Module):
         self.mask = self.update_mask(self.seq_len)
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype)
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def update_mask(self, seq_len: int) -> torch.Tensor:
         self.mask = torch.tril(torch.ones(seq_len, seq_len, dtype=self.dtype), diagonal=0).to(self.device)
@@ -164,6 +161,7 @@ class VanillaCausal(nn.Module):
         dim_per_head = feature_dim // self.num_heads
         assert dim_per_head % 2 == 0
 
+        cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
 
         Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
@@ -174,7 +172,7 @@ class VanillaCausal(nn.Module):
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
 
-        Q, K = embed_rotary(Q, K, dim=dim_per_head, device=self.device, dtype=self.dtype)
+        Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim_per_head))
@@ -296,10 +294,12 @@ class Hydra(nn.Module):
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor):
+        cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         A = torch.sum(self.feature_map_qkv(K) * V, dim=-2)
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         Y = self.out_proj(Y)
@@ -332,7 +332,6 @@ class HydraCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        # Q, K = embed_rotary(Q, K, dim=self.feature_dim, device=self.device, dtype=self.dtype)
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
@@ -402,10 +401,12 @@ class Hercules(nn.Module):
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor):
+        cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         Y = self.feature_map_attn(A) * Q
         Y = self.out_proj(Y)
@@ -477,10 +478,12 @@ class HerculesCausal(nn.Module):
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype) if use_out_proj else nn.Identity()
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor):
+        cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         Y = self.feature_map_attn(A) * Q
         Y = self.out_proj(Y)
@@ -514,10 +517,12 @@ class Zeus(nn.Module):
         self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), bias=False, device=device, dtype=dtype)
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor):
+        cos_rot, sin_rot = self.rot_emb(X)
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
         Z = A * X
@@ -584,10 +589,12 @@ class ZeusCausal(nn.Module):
         self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 2), bias=False, device=device, dtype=dtype)
+        self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
 
     def forward(self, X: torch.Tensor):
+        cos_rot, sin_rot = self.rot_emb(X)
         K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
-        K, V = embed_rotary(K, V, dim=self.feature_dim, device=self.device, dtype=self.dtype)
+        K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
         Z = A * X
