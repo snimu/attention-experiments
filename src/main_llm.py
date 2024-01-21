@@ -26,7 +26,7 @@ from functools import partial
 import urllib
 import zipfile
 import os
-from time import perf_counter_ns
+from time import perf_counter
 
 import rich
 import torch
@@ -737,9 +737,9 @@ def train_and_eval(
                     f"{':'*len(start_header)}\n"
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
-                t0 = perf_counter_ns()
+                t0 = perf_counter()
                 _, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times = train(num_steps=num_steps, attn_type=attn_type, **setting)
-                time_list.append(perf_counter_ns() - t0)
+                time_list.append(perf_counter() - t0)
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
                 train_losses_list.append(train_losses)
@@ -753,7 +753,7 @@ def train_and_eval(
                 "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
                 "num_tries": num_tries,
                 "num_steps": num_steps,
-                "avg_time_ns": sum(time_list)/len(time_list),
+                "avg_time_s": sum(time_list)/len(time_list),
                 **{
                     f"val_losses_{i+1}": str(val_losses_list[i])
                     for i in range(num_tries)
