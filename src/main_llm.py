@@ -687,6 +687,7 @@ def train_and_eval(
         test_properties: list[str],
         save: bool,
         overwrite: bool,
+        seed: int,
 ):
     if not save:
         rich.print("\n\nWARNING: Not saving results to disk.\n\n")
@@ -705,6 +706,7 @@ def train_and_eval(
 
         ]
         for setting_num, setting in enumerate(settings):
+            torch.manual_seed(seed)
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             val_losses_list = []
@@ -805,6 +807,7 @@ def get_args() -> argparse.Namespace:
         choices=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"],
         nargs="+",
     )
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
@@ -818,6 +821,7 @@ def main() -> None:
         test_properties=args.test_properties,
         save=args.save,
         overwrite=not args.append,
+        seed=args.seed,
     )
 
 
