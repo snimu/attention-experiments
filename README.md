@@ -4,7 +4,7 @@ Just me playing around with Attention mechanisms for a bit of learning and fun.
 
 I'll try to compare vanilla softmax Attention to Hydra Attention and two simplified variants of Hydra Attention.
 
-Based mostly on [Fern](https://github.com/tysam-code/)'s 
+The LLM code is based mostly on [Fern](https://github.com/tysam-code/)'s 
 [hlb-gpt](https://github.com/tysam-code/hlb-gpt):
 
 ```
@@ -18,3 +18,5 @@ version: 0.0.0
 date-released: 2023-03-05
 url: "https://github.com/tysam-code/hlb-gpt"
 ```
+
+The diffusion code is based heavily on [The Annotated Diffusion Model](https://huggingface.co/blog/annotated-diffusion).
