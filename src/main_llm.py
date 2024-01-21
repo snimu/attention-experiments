@@ -765,7 +765,7 @@ def train_and_eval(
                 **{
                     f"train_accs_{i+1}": str(train_accs[i])
                     for i in range(num_tries)
-                }
+                },
                 **{
                     f"val_accs_{i+1}": str(val_accs[i])
                     for i in range(num_tries)
