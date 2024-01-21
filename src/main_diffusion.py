@@ -689,6 +689,7 @@ def tests(args: argparse.Namespace) -> None:
     mid_attn_constructors, mid_attn_settings = get_attn_constructor_and_settings(args.mid_attn)
     out_attn_constructors, out_attn_settings = get_attn_constructor_and_settings(args.out_attn)
 
+    num_experiments = len(in_attn_constructors) * len(mid_attn_constructors) * len(out_attn_constructors)
     for experiment_num, ((in_ac, in_set), (mid_ac, mid_set), (out_ac, out_set)) in enumerate(
         itertools.product(
             zip(in_attn_constructors, in_attn_settings), 
@@ -701,7 +702,10 @@ def tests(args: argparse.Namespace) -> None:
             mid_attn_name = get_attn_name.get(mid_ac, "all")
             out_attn_name = get_attn_name.get(out_ac, "all")
 
-            print(f"\n\nTraining with {in_attn_name}, {mid_attn_name}, {out_attn_name}...")
+            print(
+                f"\n\nExperiment {experiment_num+1}/{num_experiments}: "
+                f"{in_attn_name}, {mid_attn_name}, {out_attn_name}..."
+            )
             print(f"  Trial {trial_num} of {args.num_tries}...\n")
 
             model = Unet(
