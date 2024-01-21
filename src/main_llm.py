@@ -779,12 +779,13 @@ def train_and_eval(
                 f"{':'*len(done_header)}\n"
             )
 
-    df = pl.read_csv('results_llm.csv')
-    df = df.sort(by="avg_val_loss")
-    rich.print("\n\nSorted Results:\n\n")
-    rich.print(str(df.columns[:9]))
-    for row in df.iter_rows():
-        rich.print(str(row[:9]))
+    if save:  # only works if save was passed -> you only get a summary when you save
+        df = pl.read_csv('results_llm.csv')
+        df = df.sort(by="avg_val_loss")
+        rich.print("\n\nSorted Results:\n\n")
+        rich.print(str(df.columns[:9]))
+        for row in df.iter_rows():
+            rich.print(str(row[:9]))
 
 
 def get_args() -> argparse.Namespace:
