@@ -100,10 +100,14 @@ class Vanilla(nn.Module):
         Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
         K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
         V = V.view(batch_size, seq_len, self.num_heads, dim_per_head)
+        cos_rot = cos_rot.view(seq_len, self.num_heads, dim_per_head)
+        sin_rot = sin_rot.view(seq_len, self.num_heads, dim_per_head)
 
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
+        cos_rot = cos_rot.transpose(0, 1)  # (seq_len, heads, dim_per_head) -> (heads, seq_len, dim_per_head)
+        sin_rot = sin_rot.transpose(0, 1)  # (seq_len, heads, dim_per_head) -> (heads, seq_len, dim_per_head)
         
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
 
@@ -167,10 +171,14 @@ class VanillaCausal(nn.Module):
         Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
         K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
         V = V.view(batch_size, seq_len, self.num_heads, dim_per_head)
+        cos_rot = cos_rot.view(seq_len, self.num_heads, dim_per_head)
+        sin_rot = sin_rot.view(seq_len, self.num_heads, dim_per_head)
 
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
+        cos_rot = cos_rot.transpose(0, 1)  # (seq_len, heads, dim_per_head) -> (heads, seq_len, dim_per_head)
+        sin_rot = sin_rot.transpose(0, 1)  # (seq_len, heads, dim_per_head) -> (heads, seq_len, dim_per_head)
 
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
 
