@@ -716,7 +716,9 @@ def train_and_eval(
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             val_losses_list = []
+            val_accs_list = []
             train_losses_list = []
+            train_accs_list = []
             time_list = []
             for idx in range(num_tries):
                 printable_setting = {
@@ -742,7 +744,9 @@ def train_and_eval(
                 time_list.append(perf_counter() - t0)
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
+                val_accs_list.append(val_accs)
                 train_losses_list.append(train_losses)
+                train_accs_list.append(train_accs)
 
             results = {
                 "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
@@ -759,15 +763,15 @@ def train_and_eval(
                     for i in range(num_tries)
                 },
                 **{
+                    f"val_accs_{i+1}": str(val_accs_list[i])
+                    for i in range(num_tries)
+                },
+                **{
                     f"train_losses_{i+1}": str(train_losses_list[i])
                     for i in range(num_tries)
                 },
                 **{
-                    f"train_accs_{i+1}": str(train_accs[i])
-                    for i in range(num_tries)
-                },
-                **{
-                    f"val_accs_{i+1}": str(val_accs[i])
+                    f"train_accs_{i+1}": str(train_accs_list[i])
                     for i in range(num_tries)
                 },
                 **{
