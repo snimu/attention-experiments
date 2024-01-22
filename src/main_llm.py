@@ -720,6 +720,7 @@ def train_and_eval(
             train_losses_list = []
             train_accs_list = []
             time_list = []
+            avg_batch_time_list = []
             for idx in range(num_tries):
                 printable_setting = {
                     k: feature_maps.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
@@ -747,6 +748,7 @@ def train_and_eval(
                 val_accs_list.append(val_accs)
                 train_losses_list.append(train_losses)
                 train_accs_list.append(train_accs)
+                avg_batch_time_list.append(avg_batch_times)
 
             results = {
                 "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
@@ -775,7 +777,7 @@ def train_and_eval(
                     for i in range(num_tries)
                 },
                 **{
-                    f"avg_batch_times_{i+1}": str(avg_batch_times[i])
+                    f"avg_batch_times_{i+1}": str(avg_batch_time_list[i])
                     for i in range(num_tries)
                 },
             }
