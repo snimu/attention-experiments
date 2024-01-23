@@ -499,25 +499,25 @@ def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1"):
 ## DATASET ##
 #############
 
+# define image transformations (e.g. using torchvision)
+TRANSFORMS = Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda t: (t * 2) - 1)
+])
+
+# define function
+def transformations(examples):
+    examples["pixel_values"] = [TRANSFORMS(image.convert("L")) for image in examples["image"]]
+    del examples["image"]
+
+    return examples
+
 def create_dataloader() -> [DataLoader, int, int]:
     dataset = load_dataset("fashion_mnist")
     image_size = 28
     channels = 1
     batch_size = 512
-
-    # define image transformations (e.g. using torchvision)
-    transform = Compose([
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Lambda(lambda t: (t * 2) - 1)
-    ])
-
-    # define function
-    def transformations(examples):
-        examples["pixel_values"] = [transform(image.convert("L")) for image in examples["image"]]
-        del examples["image"]
-
-        return examples
 
     transformed_dataset = dataset.with_transform(transformations).remove_columns("label")
 
@@ -657,23 +657,37 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--in_attn", 
         type=str, 
-        default="all", 
+        default="linear", 
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the input attention."
     )
     parser.add_argument(
         "--mid_attn", 
         type=str, 
-        default="all", 
+        default="linear", 
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the middle attention."
     )
     parser.add_argument(
         "--out_attn", 
         type=str, 
-        default="all", 
+        default="linear", 
         choices = ["all", "linear", "vanilla", "hydra", "hercules", "zeus", "identity"],
         help="The attention mechanism to use for the output attention."
+    )
+    parser.add_argument(
+        "--feature_map_qkv",
+        type=str,
+        default="cos_sim",
+        choices = feature_maps.ACTIVATION_NAME_TO_FUNCTION.keys(),
+        help="The feature map to use for the query, key, and value.",
+    )
+    parser.add_argument(
+        "--feature_map_attn",
+        type=str,
+        default="cos_sim",
+        choices = feature_maps.ACTIVATION_NAME_TO_FUNCTION.keys(),
+        help="The feature map to use for the attention.",
     )
     parser.add_argument(
         "--seed", 
@@ -686,7 +700,7 @@ def get_args() -> argparse.Namespace:
     return args
 
 
-get_attn_constructor = {
+attn_name_to_constructor = {
     "identity": nn.Identity,
     "linear": attention.LinearConv,
     "vanilla": attention.VanillaConv,
@@ -694,9 +708,9 @@ get_attn_constructor = {
     "hercules": attention.HerculesConv,
     "zeus": attention.ZeusConv,
 }
-get_attn_name = {v: k for k, v in get_attn_constructor.items()}
+attn_constructor_to_name = {v: k for k, v in attn_name_to_constructor.items()}
 
-get_attn_settings = {
+attn_name_to_default_settings = {
     "identity": {},
     "linear": {},
     "vanilla": {},
@@ -717,93 +731,145 @@ get_attn_settings = {
     },
 }
 
+def get_attn_settings(attn: nn.Module, feature_map_qkv: str, feature_map_attn: str) -> list[dict[str, Any]]:
+    attn_ = attn_constructor_to_name.get(attn, "identity")
 
-def get_attn_constructor_and_settings(attn: str) -> tuple[ATTENTION_CONSTRUCTOR_TYPES, dict[str, Any]]:
-    if attn == "all": 
-        return [
-            get_attn_constructor[a] for a in ["linear", "vanilla", "hydra", "hercules", "zeus", "identity"]
-        ], [
-            get_attn_settings[a] for a in ["linear", "vanilla", "hydra", "hercules", "zeus", "identity"]
+    if attn_ in ["identity", "linear", "vanilla"]:
+        return [attn_name_to_default_settings[attn_]]
+    
+    if feature_map_qkv == feature_map_attn == "all":
+        choices = list(
+            itertools.product(
+                feature_maps.ACTIVATION_NAME_TO_FUNCTION.values(),
+                feature_maps.ACTIVATION_NAME_TO_FUNCTION.values(),
+            )
+        )
+        settings = [
+            {
+                "feature_map_qkv": fm_qkv,
+                "feature_map_attn": fm_attn,
+                "device": DEVICE,
+            }
+            for fm_qkv, fm_attn in choices
+        ]
+    if feature_map_qkv == "all":
+        choices = list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        settings = [
+            {
+                "feature_map_qkv": fm_qkv,
+                "feature_map_attn": attn_name_to_default_settings[attn_]["feature_map_attn"],
+                "device": DEVICE,
+            }
+            for fm_qkv in choices
+        ]
+    if feature_map_attn == "all":
+        choices = list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        settings = [
+            {
+                "feature_map_qkv": attn_name_to_default_settings[attn_]["feature_map_qkv"],
+                "feature_map_attn": fm_attn,
+                "device": DEVICE,
+            }
+            for fm_attn in choices
         ]
     else:
-        return [get_attn_constructor[attn]], [get_attn_settings[attn]]
+        settings = [
+            {
+                "feature_map_qkv": feature_maps.ACTIVATION_NAME_TO_FUNCTION[feature_map_qkv],
+                "feature_map_attn": feature_maps.ACTIVATION_NAME_TO_FUNCTION[feature_map_attn],
+                "device": DEVICE,
+            }
+        ]
+    return settings
+
+
+def get_attn_constructor(attn: str) -> list[ATTENTION_CONSTRUCTOR_TYPES]:
+    if attn == "all": 
+        attn_types = ["linear", "vanilla", "hydra", "hercules", "zeus", "identity"]
+        return [attn_name_to_constructor[a] for a in attn_types]
+    else:
+        return [attn_name_to_constructor[attn]]
 
 
 def tests(args: argparse.Namespace) -> None:
     """Run some tests."""
 
-    in_attn_constructors, in_attn_settings = get_attn_constructor_and_settings(args.in_attn)
-    mid_attn_constructors, mid_attn_settings = get_attn_constructor_and_settings(args.mid_attn)
-    out_attn_constructors, out_attn_settings = get_attn_constructor_and_settings(args.out_attn)
+    in_attn_constructors = get_attn_constructor(args.in_attn)
+    mid_attn_constructors = get_attn_constructor(args.mid_attn)
+    out_attn_constructors = get_attn_constructor(args.out_attn)
 
     num_experiments = len(in_attn_constructors) * len(mid_attn_constructors) * len(out_attn_constructors)
-    for experiment_num, ((in_ac, in_set), (mid_ac, mid_set), (out_ac, out_set)) in enumerate(
-        itertools.product(
-            zip(in_attn_constructors, in_attn_settings), 
-            zip(mid_attn_constructors, mid_attn_settings),
-            zip(out_attn_constructors, out_attn_settings),
-        )
+    for attn_combination_num, (in_ac, mid_ac, out_ac) in enumerate(
+        itertools.product(in_attn_constructors, mid_attn_constructors, out_attn_constructors)
     ):
-        torch.manual_seed(args.seed)
-        for trial_num in range(args.num_tries):
-            in_attn_name = get_attn_name.get(in_ac, "all")
-            mid_attn_name = get_attn_name.get(mid_ac, "all")
-            out_attn_name = get_attn_name.get(out_ac, "all")
+        in_settings = get_attn_settings(in_ac, args.feature_map_qkv, args.feature_map_attn)
+        mid_settings = get_attn_settings(mid_ac, args.feature_map_qkv, args.feature_map_attn)
+        out_settings = get_attn_settings(out_ac, args.feature_map_qkv, args.feature_map_attn)
+        for seeting_num, (in_set, mid_set, out_set) in enumerate(
+            itertools.product(in_settings, mid_settings, out_settings)
+        ):
+            torch.manual_seed(args.seed)
+            for trial_num in range(args.num_tries):
+                in_attn_name = attn_constructor_to_name.get(in_ac, "all")
+                mid_attn_name = attn_constructor_to_name.get(mid_ac, "all")
+                out_attn_name = attn_constructor_to_name.get(out_ac, "all")
 
-            print(
-                f"\n\nExperiment {experiment_num+1}/{num_experiments}: "
-                f"{in_attn_name}, {mid_attn_name}, {out_attn_name}..."
-            )
-            print(f"  Trial {trial_num+1} of {args.num_tries}...\n")
+                print(
+                    f"\n\nExperiment {attn_combination_num+1}/{num_experiments}: \n"
+                    f"{in_attn_name}, {mid_attn_name}, {out_attn_name}\n"
+                    f"Settings {seeting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}: \n"
+                    f"{in_set=}, {mid_set=}, {out_set=}\n"
+                )
+                print(f"  Trial {trial_num+1} of {args.num_tries}...\n")
 
-            # Reset global variables
-            prepare_posterior_etc()
+                # Reset global variables
+                prepare_posterior_etc()
 
-            # Reset dl
-            dataloader, channels, image_size = create_dataloader()
+                # Reset dl
+                dataloader, channels, image_size = create_dataloader()
 
-            model = Unet(
-                dim=image_size,
-                channels=channels,
-                dim_mults=(1, 2, 4,),
-                in_attn_constructor=in_ac,
-                mid_attn_constructor=mid_ac,
-                out_attn_constructor=out_ac,
-                in_attn_settings=in_set,
-                mid_attn_settings=mid_set,
-                out_attn_settings=out_set,
-            )
+                model = Unet(
+                    dim=image_size,
+                    channels=channels,
+                    dim_mults=(1, 2, 4,),
+                    in_attn_constructor=in_ac,
+                    mid_attn_constructor=mid_ac,
+                    out_attn_constructor=out_ac,
+                    in_attn_settings=in_set,
+                    mid_attn_settings=mid_set,
+                    out_attn_settings=out_set,
+                )
 
-            losses, times_taken, avg_time_taken = train(
-                model=model, 
-                dataloader=dataloader,
-                epochs=args.epochs, 
-                device=DEVICE, 
-                dtype=torch.float32,
-            )
-            del model, dataloader  # make sure to free up memory
+                losses, times_taken, avg_time_taken = train(
+                    model=model, 
+                    dataloader=dataloader,
+                    epochs=args.epochs, 
+                    device=DEVICE, 
+                    dtype=torch.float32,
+                )
+                del model, dataloader  # make sure to free up memory
 
-            results = {
-                "in_attn": in_attn_name,
-                "mid_attn": mid_attn_name,
-                "out_attn": out_attn_name,
-                "epochs": args.epochs,
-                "last_loss": losses[-1],
-                "best_loss": min(losses),
-                "avg_time_taken": avg_time_taken,
-                "times_taken": str(times_taken),
-                "losses": str(losses),
-            }
-            df = pl.DataFrame(results)
-            
-            if args.save:
-                if not os.path.exists('results_diffusion.csv') or (not args.append and experiment_num == 0):
-                    df.write_csv('results_diffusion.csv')
-                else:
-                    with open('results_diffusion.csv', 'ab') as f:
-                        df.write_csv(f, include_header=False)
-            
-            print(f"DONE ({in_attn_name}, {mid_attn_name}, {out_attn_name}, {trial_num+1}/{args.num_tries})\n\n)")
+                results = {
+                    "in_attn": in_attn_name,
+                    "mid_attn": mid_attn_name,
+                    "out_attn": out_attn_name,
+                    "epochs": args.epochs,
+                    "last_loss": losses[-1],
+                    "best_loss": min(losses),
+                    "avg_time_taken": avg_time_taken,
+                    "times_taken": str(times_taken),
+                    "losses": str(losses),
+                }
+                df = pl.DataFrame(results)
+                
+                if args.save:
+                    if not os.path.exists('results_diffusion.csv') or (not args.append and attn_combination_num == 0):
+                        df.write_csv('results_diffusion.csv')
+                    else:
+                        with open('results_diffusion.csv', 'ab') as f:
+                            df.write_csv(f, include_header=False)
+                
+                print(f"DONE ({in_attn_name}, {mid_attn_name}, {out_attn_name}, {trial_num+1}/{args.num_tries})\n\n)")
 
     # Print final results
     if args.save: 
