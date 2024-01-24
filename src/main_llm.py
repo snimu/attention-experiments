@@ -668,10 +668,8 @@ def get_identity_weight_vals(attn_type: str, default: bool):
 def get_feature_map_qkv(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
         return [feature_maps.identity]
-    elif attn_type in ["hercules", "zeus"]:
+    elif attn_type in ["hercules", "zeus", "hydra"]:
         return [feature_maps.tanh] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
-    elif attn_type == "hydra":
-        return [feature_maps.identity] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
