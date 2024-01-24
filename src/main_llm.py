@@ -682,7 +682,7 @@ def get_feature_map_attn(attn_type: str, default: bool) -> list[Callable[[torch.
     elif attn_type in ["hydra", "hercules"]:
         return [feature_maps.cos_sim] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
     elif attn_type == "zeus":
-        return [feature_maps.sigmoid] if default else [feature_maps.cos_sim, feature_maps.tanh]
+        return [feature_maps.sigmoid] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
