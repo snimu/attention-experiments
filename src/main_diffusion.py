@@ -715,7 +715,7 @@ attn_name_to_default_settings = {
     "linear": {},
     "vanilla": {},
     "hydra": {
-        "feature_map_qkv": feature_maps.identity,
+        "feature_map_qkv": feature_maps.tanh,
         "feature_map_attn": feature_maps.cos_sim, 
         "device": DEVICE,
     },
