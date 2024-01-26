@@ -805,7 +805,7 @@ def tests(args: argparse.Namespace) -> None:
         in_settings = get_attn_settings(in_ac, args.feature_map_qkv, args.feature_map_attn)
         mid_settings = get_attn_settings(mid_ac, args.feature_map_qkv, args.feature_map_attn)
         out_settings = get_attn_settings(out_ac, args.feature_map_qkv, args.feature_map_attn)
-        for seeting_num, (in_set, mid_set, out_set) in enumerate(
+        for setting_num, (in_set, mid_set, out_set) in enumerate(
             itertools.product(in_settings, mid_settings, out_settings)
         ):
             torch.manual_seed(args.seed)
@@ -817,7 +817,7 @@ def tests(args: argparse.Namespace) -> None:
                 print(
                     f"\n\nExperiment {attn_combination_num+1}/{num_experiments}: \n"
                     f"{in_attn_name}, {mid_attn_name}, {out_attn_name}\n"
-                    f"Settings {seeting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}: \n"
+                    f"Settings {setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}: \n"
                     f"{in_set=}, {mid_set=}, {out_set=}\n"
                 )
                 print(f"  Trial {trial_num+1} of {args.num_tries}...\n")
@@ -853,6 +853,10 @@ def tests(args: argparse.Namespace) -> None:
                     "in_attn": in_attn_name,
                     "mid_attn": mid_attn_name,
                     "out_attn": out_attn_name,
+                    "in_attn_settings": str(in_set),
+                    "mid_attn_settings": str(mid_set),
+                    "out_attn_settings": str(out_set),
+                    "trial_num": trial_num+1,
                     "epochs": args.epochs,
                     "last_loss": losses[-1],
                     "best_loss": min(losses),
@@ -863,7 +867,13 @@ def tests(args: argparse.Namespace) -> None:
                 df = pl.DataFrame(results)
                 
                 if args.save:
-                    if not os.path.exists('results_diffusion.csv') or (not args.append and attn_combination_num == 0):
+                    if (
+                        not os.path.exists('results_diffusion.csv') 
+                        or (
+                            not args.append 
+                            and attn_combination_num == setting_num == trial_num == 0
+                        )
+                    ):
                         df.write_csv('results_diffusion.csv')
                     else:
                         with open('results_diffusion.csv', 'ab') as f:
