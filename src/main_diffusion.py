@@ -817,10 +817,10 @@ def tests(args: argparse.Namespace) -> None:
                 crnt_run_num = attn_combination_num*setting_num*args.num_tries + setting_num*args.num_tries + trial_num + 1
                 total_num_runs = num_experiments*len(in_settings)*len(mid_settings)*len(out_settings)*args.num_tries
                 print(
-                    f"\n\n{crnt_run_num}/{total_num_runs} trainings\n"
-                    f"{attn_combination_num+1}/{num_experiments} combinations of attention mechanisms\n"
-                    f"{setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)} combinations of settings\n"
-                    f"{trial_num+1}/{args.num_tries} trials\n"
+                    f"\n\n{crnt_run_num}/{total_num_runs}\ttrainings\n"
+                    f"{attn_combination_num+1}/{num_experiments}\tcombinations of attention mechanisms\n"
+                    f"{setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}\tcombinations of settings\n"
+                    f"{trial_num+1}/{args.num_tries}\ttrials\n"
                 )
 
                 # Reset global variables
