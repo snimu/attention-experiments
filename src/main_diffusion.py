@@ -616,7 +616,7 @@ def train(
             losses.append(loss.item())
             times_taken.append(time_taken)
             if step % 5 == 0 and step != 0:  # approximately 400 steps per epoch
-                print(f"loss={loss.item():.4f}, {epoch=}, {step=}, {time_taken=}")
+                print(f"loss={loss.item():.4f}, {epoch=}, {step=}, {time_taken=:.4f}")
 
             loss.backward()
             optimizer.step()
