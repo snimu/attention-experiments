@@ -798,6 +798,16 @@ def tests(args: argparse.Namespace) -> None:
     mid_attn_constructors = get_attn_constructor(args.mid_attn)
     out_attn_constructors = get_attn_constructor(args.out_attn)
 
+    crnt_run_num = 0
+    total_num_runs = 0
+    for attn_combination_num, _ in enumerate(
+        itertools.product(in_attn_constructors, mid_attn_constructors, out_attn_constructors)
+    ):
+        in_settings = get_attn_settings(in_attn_constructors[0], args.feature_map_qkv, args.feature_map_attn)
+        mid_settings = get_attn_settings(mid_attn_constructors[0], args.feature_map_qkv, args.feature_map_attn)
+        out_settings = get_attn_settings(out_attn_constructors[0], args.feature_map_qkv, args.feature_map_attn)
+        total_num_runs += len(in_settings) * len(mid_settings) * len(out_settings) * args.num_tries
+    
     num_experiments = len(in_attn_constructors) * len(mid_attn_constructors) * len(out_attn_constructors)
     for attn_combination_num, (in_ac, mid_ac, out_ac) in enumerate(
         itertools.product(in_attn_constructors, mid_attn_constructors, out_attn_constructors)
@@ -814,14 +824,13 @@ def tests(args: argparse.Namespace) -> None:
                 mid_attn_name = attn_constructor_to_name.get(mid_ac, "all")
                 out_attn_name = attn_constructor_to_name.get(out_ac, "all")
 
-                crnt_run_num = attn_combination_num*setting_num*args.num_tries + setting_num*args.num_tries + trial_num
-                total_num_runs = num_experiments*len(in_settings)*len(mid_settings)*len(out_settings)*args.num_tries
                 print(
                     f"\n\n{crnt_run_num}/{total_num_runs}\ttrainings\n"
                     f"{attn_combination_num}/{num_experiments}\tcombinations of attention mechanisms\n"
                     f"{setting_num}/{len(in_settings)*len(mid_settings)*len(out_settings)}\tcombinations of settings\n"
                     f"{trial_num}/{args.num_tries}\ttrials\n"
                 )
+                crnt_run_num += 1
 
                 # Reset global variables
                 prepare_posterior_etc()
