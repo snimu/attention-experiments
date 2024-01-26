@@ -814,13 +814,14 @@ def tests(args: argparse.Namespace) -> None:
                 mid_attn_name = attn_constructor_to_name.get(mid_ac, "all")
                 out_attn_name = attn_constructor_to_name.get(out_ac, "all")
 
+                crnt_run_num = attn_combination_num*setting_num*args.num_tries + setting_num*args.num_tries + trial_num + 1
+                total_num_runs = num_experiments*len(in_settings)*len(mid_settings)*len(out_settings)*args.num_tries
                 print(
-                    f"\n\nExperiment {attn_combination_num+1}/{num_experiments}: \n"
-                    f"{in_attn_name}, {mid_attn_name}, {out_attn_name}\n"
-                    f"Settings {setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}: \n"
-                    f"{in_set=}, {mid_set=}, {out_set=}\n"
+                    f"\n\n{crnt_run_num}/{total_num_runs} trainings\n"
+                    f"{attn_combination_num+1}/{num_experiments} combinations of attention mechanisms\n"
+                    f"{setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)} combinations of settings\n"
+                    f"{trial_num+1}/{args.num_tries} trials\n"
                 )
-                print(f"  Trial {trial_num+1} of {args.num_tries}...\n")
 
                 # Reset global variables
                 prepare_posterior_etc()
