@@ -826,10 +826,10 @@ def tests(args: argparse.Namespace) -> None:
 
                 print(
                     f"\n\nWORKING ON:\n"
-                    f"{crnt_run_num}/{total_num_runs}\ttraining num\n"
-                    f"{attn_combination_num+1}/{num_experiments}\tattn mechanism num\n"
-                    f"{setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}\tsetting num\n"
-                    f"{trial_num+1}/{args.num_tries}\ttrial\n\n"
+                    f"{crnt_run_num}/{total_num_runs}\n"
+                    f"- {attn_combination_num+1}/{num_experiments}\t(attn mechanism num)\n"
+                    f"- {setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}\t(setting num)\n"
+                    f"- {trial_num+1}/{args.num_tries}\t(trial)\n\n"
                     f"{in_attn_name=}\t{mid_attn_name=}\t{out_attn_name=}\n"
                     f"{in_set=}\n{mid_set=}\n{out_set=}\n"
                 )
