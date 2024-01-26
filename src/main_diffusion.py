@@ -825,7 +825,7 @@ def tests(args: argparse.Namespace) -> None:
                 out_attn_name = attn_constructor_to_name.get(out_ac, "all")
 
                 print(
-                    f"\n\nWORKING ON:"
+                    f"\n\nWORKING ON:\n"
                     f"{crnt_run_num}/{total_num_runs}\ttraining num\n"
                     f"{attn_combination_num+1}/{num_experiments}\tattn mechanism num\n"
                     f"{setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}\tsetting num\n"
