@@ -798,7 +798,7 @@ def tests(args: argparse.Namespace) -> None:
     mid_attn_constructors = get_attn_constructor(args.mid_attn)
     out_attn_constructors = get_attn_constructor(args.out_attn)
 
-    crnt_run_num = 0
+    crnt_run_num = 1
     total_num_runs = 0
     for attn_combination_num, _ in enumerate(
         itertools.product(in_attn_constructors, mid_attn_constructors, out_attn_constructors)
@@ -825,10 +825,13 @@ def tests(args: argparse.Namespace) -> None:
                 out_attn_name = attn_constructor_to_name.get(out_ac, "all")
 
                 print(
-                    f"\n\n{crnt_run_num}/{total_num_runs}\ttrainings\n"
-                    f"{attn_combination_num}/{num_experiments}\tcombinations of attention mechanisms\n"
-                    f"{setting_num}/{len(in_settings)*len(mid_settings)*len(out_settings)}\tcombinations of settings\n"
-                    f"{trial_num}/{args.num_tries}\ttrials\n"
+                    f"\n\nWORKING ON:"
+                    f"{crnt_run_num}/{total_num_runs}\ttraining num\n"
+                    f"{attn_combination_num+1}/{num_experiments}\tattn mechanism num\n"
+                    f"{setting_num+1}/{len(in_settings)*len(mid_settings)*len(out_settings)}\tsetting num\n"
+                    f"{trial_num+1}/{args.num_tries}\ttrial\n\n"
+                    f"{in_attn_name=}\t{mid_attn_name=}\t{out_attn_name=}\n"
+                    f"{in_set=}\n{mid_set=}\n{out_set=}\n"
                 )
                 crnt_run_num += 1
 
