@@ -1,6 +1,7 @@
 """Evaluate results."""
 
 import ast
+import itertools
 
 import polars as pl
 import seaborn as sns
@@ -145,10 +146,104 @@ def plot_loss_curves_feature_maps(
     plt.title(f"{attn_type} {to_plot}")
     plt.legend()
     plt.show()
+
+
+def get_outputs_diffusion(
+        file: str,
+        in_attn: str,
+        mid_attn: str,
+        out_attn: str,
+        to_plot: str,
+        from_step: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    filters = pl.col("in_attn") == in_attn
+    filters &= pl.col("mid_attn") == mid_attn
+    filters &= pl.col("out_attn") == out_attn
+
+    df = pl.scan_csv(file).filter(filters).collect()
+    trial_nums = df["trial_num"].to_numpy()
+    outputs = [
+        df.filter(pl.col("trial_num") == trial_num)[to_plot].item()
+        for trial_num in trial_nums
+    ]
+    outputs = [ast.literal_eval(output) for output in outputs if "nan" not in output]
+    outputs = np.array(outputs)
+    outputs = outputs[:, from_step:]
+    avg_outputs = np.mean(outputs, axis=0)
+    xs = np.arange(len(avg_outputs)) + from_step
+
+    return xs, outputs, avg_outputs
+
+
+
+def plot_loss_curves_diffusion(
+        in_attns: list[str], 
+        mid_attns: list[str], 
+        out_attns: list[str],
+        to_plot: str = "losses",  # could also be the times taken per step
+        show_all_trials: bool = False,
+        from_step: int = 0,
+) -> None:
+    file = "../results/results_diffusion.csv"
+    colors = plt.cm.tab10.colors[:len(in_attns)]
+
+    for in_attn, mid_attn, out_attn, color in zip(
+            in_attns, mid_attns, out_attns, colors
+    ):
+        xs, ys, avg_y = get_outputs_diffusion(
+            file=file,
+            in_attn=in_attn,
+            mid_attn=mid_attn,
+            out_attn=out_attn,
+            to_plot=to_plot,
+            from_step=from_step,
+        )
+        label = f"{in_attn}-{mid_attn}-{out_attn}"
+        plt.plot(xs, avg_y, label=label, color=color)
+
+        if show_all_trials:
+            for y in ys:
+                plt.plot(xs, y, color=color, alpha=0.1)
+
+    plt.xlabel("Steps")
+    plt.ylabel(to_plot)
+    plt.title(f"Diffusion {to_plot}")
+    plt.legend()
+    plt.show()
+
+
+def find_best_attn_setting_diffusion() -> None:
+    file = "../results/results_diffusion.csv"
+    df = pl.scan_csv(file).collect()
+    
+    in_attns = df["in_attn"].unique()
+    mid_attns = df["mid_attn"].unique()
+    out_attns = df["out_attn"].unique()
+
+    best_loss = float("inf")
+
+    for in_attn, mid_attn, out_attn in itertools.product(in_attns, mid_attns, out_attns):
+        xs, _, avg_y = get_outputs_diffusion(
+            file=file,
+            in_attn=in_attn,
+            mid_attn=mid_attn,
+            out_attn=out_attn,
+            to_plot="losses",
+        )
+        if avg_y.min().item() < best_loss:
+            best_loss = avg_y[-1]
+            best_in_attn = in_attn
+            best_mid_attn = mid_attn
+            best_out_attn = out_attn
+
+    print(f"Best attn setting: {best_in_attn}-{best_mid_attn}-{best_out_attn}")
     
 
 if __name__ == "__main__":
-    plot_loss_curves_feature_maps(
-        attn_type="hydra",
-        to_plot="val_loss",
+    plot_loss_curves_diffusion(
+        in_attns=["identity", "vanilla", "linear", "hydra", "hercules","hydra"],
+        mid_attns=["identity", "vanilla", "linear", "hydra", "hercules", "hercules"],
+        out_attns=["identity", "vanilla", "linear", "hydra", "hercules", "hydra"],
+        to_plot="losses",
+        from_step=200,
     )
