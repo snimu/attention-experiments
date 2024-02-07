@@ -7,5 +7,4 @@ einops
 tqdm
 datasets
 rich
-seaborn
 matplotlib
