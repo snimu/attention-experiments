@@ -165,7 +165,20 @@ def get_outputs_diffusion(
         df.filter(pl.col("trial_num") == trial_num)[to_plot].item()
         for trial_num in trial_nums
     ]
-    outputs = [ast.literal_eval(output) for output in outputs if "nan" not in output]
+    # Remove "nan" from outputs by only using outputs up to the first "nan"
+    for i, output in enumerate(outputs):
+        if "nan" not in output:
+            continue
+        first_nan_pos = output.index("nan")
+        outputs[i] = output[:first_nan_pos] + "]"
+
+    outputs = [ast.literal_eval(output) for output in outputs]
+
+    # Truncate to the length of the shortest output
+    min_len = min(len(output) for output in outputs)
+    outputs = [output[:min_len] for output in outputs]
+
+    # Now, continue
     outputs = np.array(outputs)
     outputs = outputs[:, from_step:]
     avg_outputs = np.mean(outputs, axis=0)
@@ -176,6 +189,7 @@ def get_outputs_diffusion(
 
 
 def plot_loss_curves_diffusion(
+        file: str,
         in_attns: list[str], 
         mid_attns: list[str], 
         out_attns: list[str],
@@ -183,7 +197,6 @@ def plot_loss_curves_diffusion(
         show_all_trials: bool = False,
         from_step: int = 0,
 ) -> None:
-    file = "../results/results_diffusion.csv"
     colors = plt.cm.tab10.colors[:len(in_attns)]
 
     for in_attn, mid_attn, out_attn, color in zip(
@@ -211,8 +224,7 @@ def plot_loss_curves_diffusion(
     plt.show()
 
 
-def find_best_attn_setting_diffusion() -> None:
-    file = "../results/results_diffusion.csv"
+def find_best_attn_setting_diffusion(file: str) -> None:
     df = pl.scan_csv(file).collect()
     
     in_attns = df["in_attn"].unique()
@@ -240,9 +252,10 @@ def find_best_attn_setting_diffusion() -> None:
 
 if __name__ == "__main__":
     plot_loss_curves_diffusion(
-        in_attns=["identity", "vanilla", "linear", "hydra", "hercules","hydra"],
-        mid_attns=["identity", "vanilla", "linear", "hydra", "hercules", "hercules"],
-        out_attns=["identity", "vanilla", "linear", "hydra", "hercules", "hydra"],
+        file="../results/results_diffusion_20_epochs.csv",
+        in_attns=["identity", "linear", "hydra", "hercules", "zeus"],
+        mid_attns=["identity", "linear", "hydra", "hercules", "zeus"],
+        out_attns=["identity", "linear", "hydra", "hercules", "zeus"],
         to_plot="losses",
-        from_step=200,
+        from_step=0,
     )
