@@ -1,6 +1,7 @@
 """Evaluate results."""
 
 import ast
+import copy
 import itertools
 
 import polars as pl
@@ -124,12 +125,13 @@ def plot_loss_curves_feature_maps(
     best_feature_map_qkv = df["feature_map_qkv"][0]
     best_feature_map_attn = df["feature_map_attn"][0]
 
-    for attn_type, feature_map_qkv, feature_map_attn in zip(
+    for color, attn_type, feature_map_qkv, feature_map_attn in zip(
+            ("red", "purple", "green", "blue", "orange"),
             (attn_type, attn_type, attn_type, "identity", "vanilla"),
             ("identity", best_feature_map_qkv, "cos_sim", "identity", "identity"),
             ("cos_sim", best_feature_map_attn, "identity", "identity", "identity"),
     ):
-        xs, _, avg_y = load_xs_ys_avg_y(
+        xs, ys, avg_y = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             feature_map_qkv=feature_map_qkv,
@@ -138,12 +140,16 @@ def plot_loss_curves_feature_maps(
         )
         label = f"{attn_type}"
         if attn_type not in ("identity", "vanilla"):
-            label += f"-{feature_map_qkv}-{feature_map_attn}"
-        plt.plot(xs, avg_y, label=label)
+            label += f" ({feature_map_qkv}-{feature_map_attn})"
+        plt.plot(xs, avg_y, label=label, color=color)
+
+        for y in ys:
+            plt.plot(xs, y, alpha=0.1, color=color)
     plt.xlabel("Steps")
     plt.ylabel("Loss")
     plt.title(f"{attn_type} {to_plot}")
     plt.legend()
+    plt.grid()
     plt.show()
 
 
@@ -154,7 +160,7 @@ def get_outputs_diffusion(
         out_attn: str,
         to_plot: str,
         from_step: int = 0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, list[np.ndarray], np.ndarray]:
     filters = pl.col("in_attn") == in_attn
     filters &= pl.col("mid_attn") == mid_attn
     filters &= pl.col("out_attn") == out_attn
@@ -165,24 +171,31 @@ def get_outputs_diffusion(
         df.filter(pl.col("trial_num") == trial_num)[to_plot].item()
         for trial_num in trial_nums
     ]
+    xs = np.arange(len(outputs[0].split(","))) + from_step
     # Remove "nan" from outputs by only using outputs up to the first "nan"
     for i, output in enumerate(outputs):
-        if "nan" not in output:
-            continue
-        first_nan_pos = output.index("nan")
-        outputs[i] = output[:first_nan_pos] + "]"
+        if "nan" in output:
+            first_nan_pos = output.index("nan")
+            output = output[:first_nan_pos] + "]"
+        output = ast.literal_eval(output)[from_step:]
+        outputs[i] = np.array(output)
 
-    outputs = [ast.literal_eval(output) for output in outputs]
-
-    # Truncate to the length of the shortest output
-    min_len = min(len(output) for output in outputs)
-    outputs = [output[:min_len] for output in outputs]
-
-    # Now, continue
-    outputs = np.array(outputs)
-    outputs = outputs[:, from_step:]
-    avg_outputs = np.mean(outputs, axis=0)
-    xs = np.arange(len(avg_outputs)) + from_step
+    # Calculate the average output by 
+        # 1. Calculating the lenghts of all outputs 
+        # 2. The avg_output from 0 to the minimum length is the mean of all output in that range
+        # 2. The avg_output from the smallest to the next smallest length is the mean of all output in that range
+        # 3. Repeat until the maximum length
+    working_outputs = copy.deepcopy(outputs)  # copy to not change the original list
+    working_outputs.sort(key=len)
+    avg_outputs = np.zeros(len(working_outputs[-1]))
+    lengths = [0] + [len(output) for output in working_outputs]
+    for i, _ in enumerate(lengths):
+        if i == len(lengths) - 1:
+            break
+        start_len, end_len = lengths[i], lengths[i+1]
+        outputs_slice = [o[start_len:end_len] for o in working_outputs]
+        avg_outputs[start_len:end_len] = np.mean(outputs_slice, axis=0)
+        working_outputs.pop(0)
 
     return xs, outputs, avg_outputs
 
@@ -221,6 +234,35 @@ def plot_loss_curves_diffusion(
     plt.ylabel(to_plot)
     plt.title(f"Diffusion {to_plot}")
     plt.legend()
+    plt.grid()
+    plt.show()
+
+
+def plot_loss_curves_diffusion_single_attn(
+        file: str,
+        attn_type: str,
+        to_plot: str = "losses",
+        show_all_trials: bool = False,
+        from_step: int = 0,
+) -> None:
+    xs, ys, avg_y = get_outputs_diffusion(
+        file=file,
+        in_attn=attn_type,
+        mid_attn=attn_type,
+        out_attn=attn_type,
+        to_plot=to_plot,
+        from_step=from_step,
+    )
+
+    if show_all_trials:
+        for i, y in enumerate(ys):
+            plt.plot(xs[:len(y)], y, alpha=0.3, color="blue", label=f"{attn_type}: trials" if i == 0 else None)
+    plt.plot(xs[:len(avg_y)], avg_y, label=f"{attn_type}: mean", color="red")
+    plt.xlabel("Steps")
+    plt.ylabel(to_plot)
+    plt.title(f"Diffusion {to_plot}")
+    plt.legend()
+    plt.grid()
     plt.show()
 
 
@@ -251,11 +293,19 @@ def find_best_attn_setting_diffusion(file: str) -> None:
     
 
 if __name__ == "__main__":
-    plot_loss_curves_diffusion(
+    # plot_loss_curves_diffusion(
+    #     file="../results/results_diffusion_20_epochs.csv",
+    #     in_attns=["identity", "linear", "hydra", "hercules", "zeus"],
+    #     mid_attns=["identity", "linear", "hydra", "hercules", "zeus"],
+    #     out_attns=["identity", "linear", "hydra", "hercules", "zeus"],
+    #     to_plot="losses",
+    #     from_step=0,
+    # )
+    # plot_loss_curves_feature_maps("hydra")
+    plot_loss_curves_diffusion_single_attn(
         file="../results/results_diffusion_20_epochs.csv",
-        in_attns=["identity", "linear", "hydra", "hercules", "zeus"],
-        mid_attns=["identity", "linear", "hydra", "hercules", "zeus"],
-        out_attns=["identity", "linear", "hydra", "hercules", "zeus"],
+        attn_type="hydra",
         to_plot="losses",
+        show_all_trials=True,
         from_step=0,
     )
