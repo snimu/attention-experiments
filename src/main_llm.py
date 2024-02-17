@@ -33,6 +33,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import polars as pl
+import datasets
 
 # This seems like one of the best choices right now for a fast/lightweight/simple tokenizer.
 import tiktoken
@@ -105,20 +106,21 @@ hyp = {
 if not os.path.exists(hyp['misc']['data_location']):
     print("downloading data and tokenizing (1-2 min)")
 
-    raw_data_source = 'https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-raw-v1.zip'
     raw_data_cache = './data_raw/' # where to cache the data after downloading
     
     if not os.path.isfile(raw_data_cache):
         os.makedirs(raw_data_cache, exist_ok=True)
-        urllib.request.urlretrieve(raw_data_source, raw_data_cache+'data.zip')
-
-    with zipfile.ZipFile('data_raw/data.zip', 'r') as zip_ref:
-        zip_ref.extractall('data_raw/')
-
-    with open('data_raw/wikitext-103-raw/wiki.train.raw', 'r', encoding="utf8") as data_file:
+        wikitext_train = datasets.load_dataset('wikitext', 'wikitext-103-raw-v1', cache_dir=raw_data_cache, split="train")
+        wikitext_eval = datasets.load_dataset('wikitext', 'wikitext-103-raw-v1', cache_dir=raw_data_cache, split="test")
+        with open(raw_data_cache+'wiki.train.txt', 'w', encoding="utf8") as data_file:
+            data_file.write("".join(wikitext_train['text']))
+        with open(raw_data_cache+'wiki.valid.txt', 'w', encoding="utf8") as data_file:
+            data_file.write("".join(wikitext_eval['text']))
+            
+    with open('data_raw/wiki.train.txt', 'r', encoding="utf8") as data_file:
         raw_train_data = data_file.read()
 
-    with open('data_raw/wikitext-103-raw/wiki.valid.raw', 'r', encoding="utf8") as data_file:
+    with open('data_raw/wiki.valid.txt', 'r', encoding="utf8") as data_file:
         raw_eval_data = data_file.read()
 
     tokenizer = tiktoken.get_encoding("gpt2")
@@ -154,11 +156,12 @@ class LayerNorm(nn.Module):
     def __init__(self, num_features, eps=1e-5, weight=True, bias=False):
         super().__init__()
         self.eps = eps
+        self.num_features = num_features
         self.weight = nn.Parameter(torch.ones(num_features)) if weight else None
         self.bias = nn.Parameter(torch.zeros(num_features)) if bias else None
 
     def forward(self, x):
-        return F.layer_norm(x, self.weight.shape, weight=self.weight, bias=self.bias, eps=self.eps)
+        return F.layer_norm(x, (self.num_features,), weight=self.weight, bias=self.bias, eps=self.eps)
 
 class AttentionBlock(nn.Module):
     """ A standard attention block (for now....?) """
@@ -696,8 +699,10 @@ def filter_identity_weight_vals(attn_type: str, identity_weight: list[float]) ->
 
 
 def filter_feature_map_qkv(attn_type: str, feature_map_qkv: list[str]) -> list[Callable[[torch.Tensor], torch.Tensor]]:
-    if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
+    if attn_type == "identity":
         return [feature_maps.identity]
+    elif attn_type in ["hlb-gpt", "torchMHA", "vanilla"]:
+        return [feature_maps.softmax]
     elif attn_type in ["hercules", "zeus", "hydra"]:
         if "all" in feature_map_qkv:
             return list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values()) 
@@ -733,11 +738,31 @@ def filter_feature_map_attn(
 
 
 def filter_use_x_norm(attn_type: str, use_x_norm: list[bool]) -> list[bool]:
-    return list(set(use_x_norm))
+    if attn_type in ["identity", "hlb-gpt"]:
+        return [False]
+    elif attn_type in ["torchMHA", "vanilla", "hydra", "hercules", "zeus"]:
+        return list(set(use_x_norm))
 
 
-def filter_use_qkv_norm(attn_type: str, use_qkv_norm: list[bool]) -> list[bool]:
-    return list(set(use_qkv_norm))
+def filter_use_qkv_norm(
+        attn_type: str, 
+        use_qkv_norm: list[bool],
+        use_qkv_weight: list[bool],
+) -> list[tuple[bool, bool]]:
+    use_qkv_norm = list(set(use_qkv_norm))
+    if attn_type in ["identity", "hlb-gpt", "torchMHA"]:
+        return [(False, False)]
+    elif attn_type in ["vanilla", "hydra", "hercules", "zeus"]:
+        settings = []
+        for uqn in use_qkv_norm:
+            if uqn:
+                use_qkv_weight = list(set(use_qkv_weight))
+                settings.extend([(uqn, uqw) for uqw in use_qkv_weight])
+            else:
+                settings.append((False, False))
+        return settings
+
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
 def get_qkv_factor(attn_type: str) -> int:
@@ -745,6 +770,21 @@ def get_qkv_factor(attn_type: str) -> int:
         return 2
     else:
         return 3
+    
+
+def get_printable_setting(setting: dict) -> str:
+    return (
+        "{\n"
+        + "\n".join(
+            [
+                f"    {k}: {v}," 
+                if k not in ["feature_map_qkv", "feature_map_attn"]
+                else f"    {k}: {feature_maps.ACTIVATION_FUNCTION_TO_NAME[v]},"
+                for k, v in setting.items()
+            ]
+        )
+        + "\n}"
+    )
 
 
 def train_and_eval(hyp, args: argparse.Namespace):
@@ -761,7 +801,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "feature_map_attn": fm_attn,
                 "use_x_norm": uxn,
                 "use_qkv_norm": uqkvn,
-                "use_qkv_weight": False,
+                "use_qkv_weight": uqkvw,
                 "qkv_factor": get_qkv_factor(attn_type),
             }
             # The functions below pick the correct default values for each attention type
@@ -771,10 +811,9 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for fm_qkv in filter_feature_map_qkv(attn_type, args.feature_map_qkv)
             for fm_attn in filter_feature_map_attn(attn_type, args.feature_map_attn)
             for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
-            for uqkvn in filter_use_qkv_norm(attn_type, args.use_qkv_norm)
+            for uqkvn, uqkvw in filter_use_qkv_norm(attn_type, args.use_qkv_norm, args.use_qkv_weight)
         ]
         for setting_num, setting in enumerate(settings):
-            torch.manual_seed(args.seed)
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             val_losses_list = []
@@ -784,22 +823,20 @@ def train_and_eval(hyp, args: argparse.Namespace):
             time_list = []
             avg_batch_time_list = []
             for idx in range(args.num_tries):
-                printable_setting = (
-                    "{\n"
-                    + "\n".join([f"    {k}: {v}," for k, v in setting.items()])
-                    + "\n}"
-                )
+                torch.manual_seed(args.seed+idx)  # all the settings should be tried with the same random seeds in the same order
+                printable_setting = get_printable_setting(setting)
                 start_header = (
                     f"\n{attn_type} ({int(setting_num*args.num_tries+idx+1)}/{int(len(settings)*args.num_tries)} "
                     f"--- setting {setting_num+1}/{len(settings)} "
                     f"--- try {idx+1}/{args.num_tries}) "
-                    f"setting={printable_setting} "
+                    f"\nsetting={printable_setting} "
                 )
+                divider = ":" * max(len(line) for line in start_header.split("\n"))
                 rich.print(
-                    f"\n{':'*len(start_header)}"
+                    f"\n{divider}"
                     f"\nSTARTING:\n"
                     f"{start_header}\n"
-                    f"{':'*len(start_header)}\n"
+                    f"{divider}\n"
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter()
@@ -847,7 +884,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             }
             df = pl.DataFrame(results)
 
-            if args._get_argssave:
+            if args.save:
                 if not os.path.exists('results_llm.csv') or (not args.append and attn_num == setting_num == 0):
                     df.write_csv('results_llm.csv')
                 else:
@@ -857,14 +894,15 @@ def train_and_eval(hyp, args: argparse.Namespace):
             done_header = (
                 f"\n{attn_type} "
                 f"(setting {setting_num+1}/{len(settings)}) "
-                f"setting={printable_setting} "
-                f"avg_val_loss={results['avg_val_loss']:.2f} "
+                f"\nsetting={printable_setting} "
+                f"\navg_val_loss={results['avg_val_loss']:.2f} "
             )
+            divider = ":" * max(len(line) for line in done_header.split("\n"))
             rich.print(
-                f"\n{':'*len(done_header)}"
+                f"\n{divider}"
                 f"\nDONE\n"
                 f"{done_header}"
-                f"{':'*len(done_header)}\n"
+                f"\n{divider}\n"
             )
 
     if args.save:  # only works if save was passed -> you only get a summary when you save
@@ -917,14 +955,20 @@ def get_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--use_x_norm",
-        type=bool,
-        default=[True],
+        type=int,  # for some reason, argparse cannot handle bools
+        default=1,
         nargs="+",
     )
     parser.add_argument(
         "--use_qkv_norm",
-        type=bool,
-        default=[False],
+        type=int,
+        default=0,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--use_qkv_weight",
+        type=int,
+        default=0,
         nargs="+",
     )
     parser.add_argument("--seed", type=int, default=42)
@@ -935,8 +979,12 @@ def get_args() -> argparse.Namespace:
     args.identity_weight = [args.identity_weight] if isinstance(args.identity_weight, float) else args.identity_weight
     args.feature_map_qkv = [args.feature_map_qkv] if isinstance(args.feature_map_qkv, str) else args.feature_map_qkv
     args.feature_map_attn = [args.feature_map_attn] if isinstance(args.feature_map_attn, str) else args.feature_map_attn
-    args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, bool) else args.use_x_norm
-    args.use_qkv_norm = [args.use_qkv_norm] if isinstance(args.use_qkv_norm, bool) else args.use_qkv_norm
+    args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, int) else args.use_x_norm
+    args.use_x_norm = [bool(uxn) for uxn in args.use_x_norm]
+    args.use_qkv_norm = [args.use_qkv_norm] if isinstance(args.use_qkv_norm, int) else args.use_qkv_norm
+    args.use_qkv_norm = [bool(uqkvn) for uqkvn in args.use_qkv_norm]
+    args.use_qkv_weight = [args.use_qkv_weight] if isinstance(args.use_qkv_weight, int) else args.use_qkv_weight
+    args.use_qkv_weight = [bool(uqkvw) for uqkvw in args.use_qkv_weight]
 
     return args
 
