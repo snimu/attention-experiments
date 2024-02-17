@@ -27,14 +27,14 @@ class TorchMHACausal(nn.Module):
             self,
             feature_dim: int,
             num_heads: int,
-            norm: nn.Module,
+            x_norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.feature_dim = feature_dim
         self.num_heads = num_heads
-        self.norm = norm
+        self.x_norm = x_norm
         self.device = device
         self.dtype = dtype
         self.mha = nn.MultiheadAttention(feature_dim, num_heads, dropout=0.0, bias=False, device=device, dtype=dtype)
@@ -53,7 +53,7 @@ class TorchMHACausal(nn.Module):
         assert feature_dim == self.feature_dim
 
         residual = X
-        X = self.norm(X)
+        X = self.x_norm(X)
         X = X.permute(1, 0, 2)
         X = self.mha(X, X, X, attn_mask=self.mask, need_weights=False)[0]
         X = X.permute(1, 0, 2)
@@ -73,7 +73,8 @@ class Vanilla(nn.Module):
             self, 
             feature_dim: int, 
             num_heads: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
@@ -82,7 +83,8 @@ class Vanilla(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.num_heads = num_heads
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Linear(feature_dim, feature_dim, bias=False, device=device, dtype=dtype)
         self.rot_emb = embeddings.Rotary(feature_dim).to(device, dtype)
@@ -95,7 +97,7 @@ class Vanilla(nn.Module):
         assert dim_per_head % 2 == 0
 
         cos_rot, sin_rot = self.rot_emb(X)
-        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
+        Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
 
         Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
         K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
@@ -132,7 +134,8 @@ class VanillaCausal(nn.Module):
             self, 
             feature_dim: int, 
             num_heads: int,
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
     ):
@@ -143,7 +146,8 @@ class VanillaCausal(nn.Module):
         self.dtype = dtype
         self.feature_dim = feature_dim
         self.num_heads = num_heads
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.seq_len = 32  # initial sequence length from training --- updated in forward
         self.mask = self.update_mask(self.seq_len)
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -166,7 +170,7 @@ class VanillaCausal(nn.Module):
         assert dim_per_head % 2 == 0
 
         cos_rot, sin_rot = self.rot_emb(X)
-        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
+        Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
 
         Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
         K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
@@ -200,30 +204,39 @@ class VanillaCausal(nn.Module):
 
 def img_to_qkv(
         X: torch.Tensor, 
-        norm: nn.Module, 
+        x_norm: nn.Module, 
+        qkv_norm: nn.Module,
         in_proj: nn.Module, 
         heads: int = 1,
         chunks: int = 3,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    qkv = in_proj(norm(X)).chunk(chunks, dim=1)
+    qkv = in_proj(x_norm(X)).chunk(chunks, dim=1)
     qkv = map(
         lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=heads), qkv
     ) 
-    return qkv
+    return qkv_norm(qkv)
 
 
 class VanillaConv(nn.Module):
-    def __init__(self, feature_dim, norm, heads=4, dim_head=32):
+    def __init__(
+            self, 
+            feature_dim: int, 
+            x_norm: nn.Module, 
+            qkv_norm: nn.Module,
+            heads: int = 4, 
+            dim_head: int = 32,
+    ) -> None:
         super().__init__()
         self.scale = dim_head**-0.5
         self.heads = heads
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         hidden_dim = dim_head * heads
         self.in_proj = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
         self.out_proj = nn.Conv2d(hidden_dim, feature_dim, 1)
 
     def forward(self, X):
-        Q, V, v = img_to_qkv(X, self.norm, self.in_proj, heads=self.heads)
+        Q, V, v = img_to_qkv(X, self.x_norm, self.qkv_norm, self.in_proj, heads=self.heads)
         Q = Q * self.scale
 
         sim = torch.einsum("b h d i, b h d j -> b h i j", Q, V)
@@ -237,11 +250,19 @@ class VanillaConv(nn.Module):
     
 
 class LinearConv(nn.Module):
-    def __init__(self, feature_dim, norm, heads=4, dim_head=32):
+    def __init__(
+            self, 
+            feature_dim: int, 
+            x_norm: nn.Module, 
+            qkv_norm: nn.Module,
+            heads: int = 4, 
+            dim_head: int = 32,
+    ) -> None:
         super().__init__()
         self.scale = dim_head**-0.5
         self.heads = heads
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         hidden_dim = dim_head * heads
         self.in_proj = nn.Conv2d(feature_dim, hidden_dim * 3, 1, bias=False)
 
@@ -251,7 +272,7 @@ class LinearConv(nn.Module):
         )
 
     def forward(self, X):
-        Q, K, V = img_to_qkv(X, self.norm, self.in_proj, heads=self.heads)
+        Q, K, V = img_to_qkv(X, self.x_norm, self.qkv_norm, self.in_proj, heads=self.heads)
 
         Q = Q.softmax(dim=-2)
         K = K.softmax(dim=-1)
@@ -286,7 +307,8 @@ class Hydra(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -297,7 +319,8 @@ class Hydra(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -306,7 +329,7 @@ class Hydra(nn.Module):
 
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
-        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
+        Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         A = torch.sum(self.feature_map_qkv(K) * V, dim=-2)
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
@@ -319,7 +342,8 @@ class HydraCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -330,7 +354,8 @@ class HydraCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -339,7 +364,7 @@ class HydraCausal(nn.Module):
 
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
-        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
+        Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
@@ -355,7 +380,8 @@ class HydraConv(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -366,14 +392,15 @@ class HydraConv(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Conv2d(feature_dim, feature_dim * 3, 1, bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Conv2d(feature_dim, feature_dim, 1, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
     def forward(self, X: torch.Tensor):
-        Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
+        Q, K, V = img_to_qkv(X, self.x_norm, self.qkv_norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
         A = torch.sum(self.feature_map_qkv(K) * V, dim=-1, keepdim=True)
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         _, _, h, w = X.shape
@@ -393,7 +420,8 @@ class Hercules(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -404,7 +432,8 @@ class Hercules(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -413,7 +442,7 @@ class Hercules(nn.Module):
 
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
-        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
+        Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
         K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         Y = self.feature_map_attn(A) * Q
@@ -432,7 +461,8 @@ class HerculesConv(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -443,14 +473,15 @@ class HerculesConv(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Conv2d(feature_dim, feature_dim * 3, 1, bias=False, device=device, dtype=dtype)
         self.out_proj = nn.Conv2d(feature_dim, feature_dim, 1, device=device, dtype=dtype) if use_out_proj else nn.Identity()
 
     def forward(self, X: torch.Tensor):
-        Q, K, V = img_to_qkv(X, self.norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
+        Q, K, V = img_to_qkv(X, self.x_norm, self.qkv_norm, self.in_proj)  # 3x (batch, 1, dim, h*w)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-1, keepdim=True)
         Y = self.feature_map_attn(A) * Q
         _, _, h, w = X.shape
@@ -470,7 +501,8 @@ class HerculesCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -481,7 +513,8 @@ class HerculesCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -490,7 +523,7 @@ class HerculesCausal(nn.Module):
 
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
-        Q, K, V = self.in_proj(self.norm(X)).chunk(3, dim=-1)
+        Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
         K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         Y = self.feature_map_attn(A) * Q
@@ -509,7 +542,8 @@ class Zeus(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             identity_weight: float = 0.5,
@@ -520,7 +554,8 @@ class Zeus(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.identity_weight = identity_weight
@@ -529,7 +564,7 @@ class Zeus(nn.Module):
 
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
-        K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
+        K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(2, dim=-1)
         K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
@@ -547,7 +582,8 @@ class ZeusConv(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             identity_weight: float = 0.5,
@@ -558,14 +594,15 @@ class ZeusConv(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.identity_weight = identity_weight
         self.in_proj = nn.Conv2d(feature_dim, feature_dim * 2, 1, bias=False, device=device, dtype=dtype)
 
     def forward(self, X: torch.Tensor):
-        K, V = img_to_qkv(X, self.norm, self.in_proj, chunks=2)  # 2x (batch, 1, dim, h*w)
+        K, V = img_to_qkv(X, self.x_norm, self.qkv_norm, self.in_proj, chunks=2)  # 2x (batch, 1, dim, h*w)
         A = torch.sum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-1, keepdim=True)  # Attend over the spatial dimension # TODO: is this correct?
         A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual
         A = rearrange(A, "b 1 c 1 -> b c 1 1")  # X.shape = (b c x y), A.shape = (b c 1 1)
@@ -581,7 +618,8 @@ class ZeusCausal(nn.Module):
     def __init__(
             self, 
             feature_dim: int, 
-            norm: nn.Module,
+            x_norm: nn.Module,
+            qkv_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             identity_weight: float = 0.5,
@@ -592,7 +630,8 @@ class ZeusCausal(nn.Module):
         self.feature_dim = feature_dim
         self.feature_map_qkv = feature_map_qkv
         self.feature_map_attn = feature_map_attn
-        self.norm = norm
+        self.x_norm = x_norm
+        self.qkv_norm = qkv_norm
         self.device = device
         self.dtype = dtype
         self.identity_weight = identity_weight
@@ -601,7 +640,7 @@ class ZeusCausal(nn.Module):
 
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
-        K, V = self.in_proj(self.norm(X)).chunk(2, dim=-1)
+        K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(2, dim=-1)
         K, V = embeddings.apply_rotary_pos_emb(K, V, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * self.feature_map_qkv(V), dim=-2)
         A = (1 - self.identity_weight) * self.feature_map_attn(A) + self.identity_weight  # =^= residual

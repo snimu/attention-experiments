@@ -187,9 +187,35 @@ class AttentionBlock(nn.Module):
         x, _ = self.attention(x, x, x, attn_mask=attn_mask[:x.shape[1], :x.shape[1]], need_weights=False)
         x = x + residual # haiku
         return x
+    
+
+def create_layernorms(
+        use_x_norm: bool, 
+        use_qkv_norm: bool, 
+        qkv_factor: int = 3,
+        use_qkv_weight: bool = False,
+) -> tuple[nn.Module, nn.Module]:
+    x_norm = LayerNorm(
+        hyp['net']['residual_depth'], 
+        bias=False
+    ) if use_x_norm else nn.Identity()
+
+    qkv_norm = LayerNorm(
+        int(hyp['net']['residual_depth']*qkv_factor), 
+        bias=False, 
+        weight=use_qkv_weight,
+    ) if use_qkv_norm else nn.Identity()
+    return x_norm, qkv_norm
 
 
 def create_attention(attn_type, **kwargs):  # kwargs for things that I actually want to vary across experiments
+    x_norm, qkv_norm = create_layernorms(
+        use_x_norm=kwargs['use_x_norm'],
+        use_qkv_norm=kwargs['use_qkv_norm'],
+        qkv_factor=kwargs['qkv_factor'],
+        use_qkv_weight=kwargs['use_qkv_weight'],
+    )
+
     if attn_type == "identity":
         attn = torch.nn.Identity()
     elif attn_type == "hlb-gpt":
@@ -202,7 +228,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         attn = attention.TorchMHACausal(
             feature_dim=hyp['net']['residual_depth'],
             num_heads=hyp['net']['num_heads'],
-            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            x_norm=x_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
         )
@@ -210,14 +236,16 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         attn = attention.VanillaCausal(
             feature_dim=hyp['net']['residual_depth'],
             num_heads=hyp['net']['num_heads'],
-            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            x_norm=x_norm,
+            qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
         )
     elif attn_type == "hydra":
         attn = attention.HydraCausal(
             feature_dim=hyp['net']['residual_depth'],
-            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            x_norm=x_norm,
+            qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
             feature_map_qkv=kwargs['feature_map_qkv'],
@@ -227,7 +255,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
     elif attn_type == "hercules":
         attn = attention.HerculesCausal(
             feature_dim=hyp['net']['residual_depth'],
-            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            x_norm=x_norm,
+            qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
             feature_map_qkv=kwargs['feature_map_qkv'],
@@ -237,7 +266,8 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
     elif attn_type == "zeus":
         attn = attention.ZeusCausal(
             feature_dim=hyp['net']['residual_depth'],
-            norm=LayerNorm(hyp['net']['residual_depth'], bias=False),
+            x_norm=x_norm,
+            qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
             feature_map_qkv=kwargs['feature_map_qkv'],
@@ -645,74 +675,106 @@ def train(num_steps, attn_type, **kwargs):
     return net, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times
 
 
-def get_use_out_proj_vals(attn_type: str, default: bool):
+def filter_use_out_proj_vals(attn_type: str, use_out_proj: list[bool]) -> list[bool]:
     if attn_type in ["hlb-gpt", "torchMHA", "vanilla"]:
         return [True]
     if attn_type in ["identity", "zeus"]:
         return [False]
     if attn_type in ["hydra", "hercules"]:
-        return [True] if default else [True, False]
+        return list(set(use_out_proj))
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def get_identity_weight_vals(attn_type: str, default: bool):
+def filter_identity_weight_vals(attn_type: str, identity_weight: list[float]) -> list[float | None]:
     if attn_type == "zeus":
-        return [0.5] if default else [0.0, 0.1, 0.5, 0.9, 1.0]
+        return list(set(identity_weight))
     elif attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla", "hydra", "hercules"]:
         return [None]
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def get_feature_map_qkv(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
+def filter_feature_map_qkv(attn_type: str, feature_map_qkv: list[str]) -> list[Callable[[torch.Tensor], torch.Tensor]]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
         return [feature_maps.identity]
     elif attn_type in ["hercules", "zeus", "hydra"]:
-        return [feature_maps.tanh] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        if "all" in feature_map_qkv:
+            return list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values()) 
+        elif "default" in feature_map_qkv:
+            return [feature_maps.tanh]
+        else:
+            return[feature_maps.ACTIVATION_NAME_TO_FUNCTION[fm] for fm in list(set(feature_map_qkv))]
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def get_feature_map_attn(attn_type: str, default: bool) -> list[Callable[[torch.Tensor], torch.Tensor]]:
+def filter_feature_map_attn(
+        attn_type: str, feature_map_attn: list[str]
+) -> list[Callable[[torch.Tensor], torch.Tensor]]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "vanilla"]:
         return [feature_maps.identity]
     elif attn_type in ["hydra", "hercules"]:
-        return [feature_maps.cos_sim] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        if "all" in feature_map_attn:
+            return list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        elif "default" in feature_map_attn:
+            return [feature_maps.cos_sim]
+        else:
+            return [feature_maps.ACTIVATION_NAME_TO_FUNCTION[fm] for fm in list(set(feature_map_attn))]
     elif attn_type == "zeus":
-        return [feature_maps.sigmoid] if default else list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        if "all" in feature_map_attn:
+            return list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.values())
+        elif "default" in feature_map_attn:
+            return [feature_maps.sigmoid]
+        else:
+            return [feature_maps.ACTIVATION_NAME_TO_FUNCTION[fm] for fm in list(set(feature_map_attn))]
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def train_and_eval(
-        hyp, 
-        num_tries: int, 
-        num_steps: int, 
-        attn_types: list[str], 
-        test_properties: list[str],
-        save: bool,
-        overwrite: bool,
-        seed: int,
-):
-    if not save:
+def filter_use_x_norm(attn_type: str, use_x_norm: list[bool]) -> list[bool]:
+    return list(set(use_x_norm))
+
+
+def filter_use_qkv_norm(attn_type: str, use_qkv_norm: list[bool]) -> list[bool]:
+    return list(set(use_qkv_norm))
+
+
+def get_qkv_factor(attn_type: str) -> int:
+    if attn_type == "zeus":
+        return 2
+    else:
+        return 3
+
+
+def train_and_eval(hyp, args: argparse.Namespace):
+    if not args.save:
         rich.print("\n\nWARNING: Not saving results to disk.\n\n")
 
-    all_properties = ["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"]
-    property_to_default = {prop: (False if prop in test_properties else True) for prop in all_properties}
-
     hyp_init = copy.deepcopy(hyp)
-    for attn_num, attn_type in enumerate(attn_types):
+    for attn_num, attn_type in enumerate(args.attn_type):
         settings = [
-            {"use_out_proj": uop, "identity_weight": iw, "feature_map_qkv": fm_qkv, "feature_map_attn": fm_attn}
-            for uop in get_use_out_proj_vals(attn_type, property_to_default["use_out_proj"])
-            for iw in get_identity_weight_vals(attn_type, property_to_default["identity_weight"])
-            for fm_qkv in get_feature_map_qkv(attn_type, property_to_default["feature_map_qkv"])
-            for fm_attn in get_feature_map_attn(attn_type, property_to_default["feature_map_attn"])
-
+            {
+                "use_out_proj": uop, 
+                "identity_weight": iw, 
+                "feature_map_qkv": fm_qkv, 
+                "feature_map_attn": fm_attn,
+                "use_x_norm": uxn,
+                "use_qkv_norm": uqkvn,
+                "use_qkv_weight": False,
+                "qkv_factor": get_qkv_factor(attn_type),
+            }
+            # The functions below pick the correct default values for each attention type
+            # even if the wrong ones were given in the command line.
+            for uop in filter_use_out_proj_vals(attn_type, args.use_out_proj)
+            for iw in filter_identity_weight_vals(attn_type, args.identity_weight)
+            for fm_qkv in filter_feature_map_qkv(attn_type, args.feature_map_qkv)
+            for fm_attn in filter_feature_map_attn(attn_type, args.feature_map_attn)
+            for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
+            for uqkvn in filter_use_qkv_norm(attn_type, args.use_qkv_norm)
         ]
         for setting_num, setting in enumerate(settings):
-            torch.manual_seed(seed)
+            torch.manual_seed(args.seed)
             hyp = copy.deepcopy(hyp_init)
             val_loss_list = []
             val_losses_list = []
@@ -721,16 +783,16 @@ def train_and_eval(
             train_accs_list = []
             time_list = []
             avg_batch_time_list = []
-            for idx in range(num_tries):
-                printable_setting = {
-                    k: feature_maps.ACTIVATION_FUNCTION_TO_NAME[v] if callable(v) else v 
-                    for k, v in setting.items() 
-                    if k in test_properties
-                }
+            for idx in range(args.num_tries):
+                printable_setting = (
+                    "{\n"
+                    + "\n".join([f"    {k}: {v}," for k, v in setting.items()])
+                    + "\n}"
+                )
                 start_header = (
-                    f"\n{attn_type} ({int(setting_num*num_tries+idx+1)}/{int(len(settings)*num_tries)} "
+                    f"\n{attn_type} ({int(setting_num*args.num_tries+idx+1)}/{int(len(settings)*args.num_tries)} "
                     f"--- setting {setting_num+1}/{len(settings)} "
-                    f"--- try {idx+1}/{num_tries}) "
+                    f"--- try {idx+1}/{args.num_tries}) "
                     f"setting={printable_setting} "
                 )
                 rich.print(
@@ -741,7 +803,7 @@ def train_and_eval(
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter()
-                _, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times = train(num_steps=num_steps, attn_type=attn_type, **setting)
+                _, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times = train(num_steps=args.num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter() - t0)
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
@@ -757,34 +819,34 @@ def train_and_eval(
                 "identity_weight": setting.get("identity_weight", None),
                 "feature_map_qkv": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)],
                 "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
-                "num_tries": num_tries,
-                "num_steps": num_steps,
+                "num_tries": args.num_tries,
+                "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
                 **{
                     f"val_losses_{i+1}": str(val_losses_list[i])
-                    for i in range(num_tries)
+                    for i in range(args.num_tries)
                 },
                 **{
                     f"val_accs_{i+1}": str(val_accs_list[i])
-                    for i in range(num_tries)
+                    for i in range(args.num_tries)
                 },
                 **{
                     f"train_losses_{i+1}": str(train_losses_list[i])
-                    for i in range(num_tries)
+                    for i in range(args.num_tries)
                 },
                 **{
                     f"train_accs_{i+1}": str(train_accs_list[i])
-                    for i in range(num_tries)
+                    for i in range(args.num_tries)
                 },
                 **{
                     f"avg_batch_times_{i+1}": str(avg_batch_time_list[i])
-                    for i in range(num_tries)
+                    for i in range(args.num_tries)
                 },
             }
             df = pl.DataFrame(results)
 
-            if save:
-                if not os.path.exists('results_llm.csv') or (overwrite and attn_num == setting_num == 0):
+            if args._get_argssave:
+                if not os.path.exists('results_llm.csv') or (not args.append and attn_num == setting_num == 0):
                     df.write_csv('results_llm.csv')
                 else:
                     with open('results_llm.csv', 'ab') as f:
@@ -803,7 +865,7 @@ def train_and_eval(
                 f"{':'*len(done_header)}\n"
             )
 
-    if save:  # only works if save was passed -> you only get a summary when you save
+    if args.save:  # only works if save was passed -> you only get a summary when you save
         df = pl.read_csv('results_llm.csv')
         df = df.sort(by="avg_val_loss")
         rich.print("\n\nSorted Results:\n\n")
@@ -826,28 +888,60 @@ def get_args() -> argparse.Namespace:
         nargs="+",
     )
     parser.add_argument(
-        "--test_properties", 
-        type=str, 
-        default=["use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"], 
-        choices=["none", "use_out_proj", "identity_weight", "feature_map_qkv", "feature_map_attn"],
+        "--use_out_proj",
+        type=bool,
+        default=[True],
+        nargs="+",
+    )
+    parser.add_argument(
+        "--identity_weight",
+        type=float,
+        default=[0.5],
+        nargs="+",
+    )
+    parser.add_argument(
+        "--feature_map_qkv",
+        type=str,
+        default=["default"],
+        choices=list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.keys()) + ["all", "default"],
+        nargs="+",
+    )
+    parser.add_argument(
+        "--feature_map_attn",
+        type=str,
+        default=["default"],
+        choices=list(feature_maps.ACTIVATION_NAME_TO_FUNCTION.keys()) + ["all", "default"],
+        nargs="+",
+    )
+    parser.add_argument(
+        "--use_x_norm",
+        type=bool,
+        default=[True],
+        nargs="+",
+    )
+    parser.add_argument(
+        "--use_qkv_norm",
+        type=bool,
+        default=[False],
         nargs="+",
     )
     parser.add_argument("--seed", type=int, default=42)
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    args.attn_type = [args.attn_type] if isinstance(args.attn_type, str) else args.attn_type
+    args.use_out_proj = [args.use_out_proj] if isinstance(args.use_out_proj, bool) else args.use_out_proj
+    args.identity_weight = [args.identity_weight] if isinstance(args.identity_weight, float) else args.identity_weight
+    args.feature_map_qkv = [args.feature_map_qkv] if isinstance(args.feature_map_qkv, str) else args.feature_map_qkv
+    args.feature_map_attn = [args.feature_map_attn] if isinstance(args.feature_map_attn, str) else args.feature_map_attn
+    args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, bool) else args.use_x_norm
+    args.use_qkv_norm = [args.use_qkv_norm] if isinstance(args.use_qkv_norm, bool) else args.use_qkv_norm
+
+    return args
 
 
 def main() -> None:
     args = get_args()
-    train_and_eval(
-        hyp, 
-        num_tries=args.num_tries, 
-        num_steps=args.num_steps, 
-        attn_types=args.attn_type, 
-        test_properties=args.test_properties,
-        save=args.save,
-        overwrite=not args.append,
-        seed=args.seed,
-    )
+    train_and_eval(hyp, args)
 
 
 if __name__ == '__main__':
