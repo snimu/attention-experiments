@@ -819,6 +819,8 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "identity_weight": setting.get("identity_weight", None),
                 "feature_map_qkv": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_qkv", None)],
                 "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
+                "use_x_norm": setting.get("use_x_norm", False),
+                "use_qkv_norm": setting.get("use_qkv_norm", False),
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
