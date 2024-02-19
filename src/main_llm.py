@@ -822,8 +822,11 @@ def train_and_eval(hyp, args: argparse.Namespace):
             train_accs_list = []
             time_list = []
             avg_batch_time_list = []
+            seeds = []
             for idx in range(args.num_tries):
-                torch.manual_seed(args.seed+idx)  # all the settings should be tried with the same random seeds in the same order
+                seed = args.seed+idx  # all the settings should be tried with the same random seeds in the same order
+                seeds.append(seed)
+                torch.manual_seed(seed)
                 printable_setting = get_printable_setting(setting)
                 start_header = (
                     f"\n{attn_type} ({int(setting_num*args.num_tries+idx+1)}/{int(len(settings)*args.num_tries)} "
@@ -858,6 +861,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "feature_map_attn": feature_maps.ACTIVATION_FUNCTION_TO_NAME[setting.get("feature_map_attn", None)],
                 "use_x_norm": setting.get("use_x_norm", False),
                 "use_qkv_norm": setting.get("use_qkv_norm", False),
+                "use_qkv_weight": setting.get("use_qkv_weight", False),
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
@@ -881,6 +885,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     f"avg_batch_times_{i+1}": str(avg_batch_time_list[i])
                     for i in range(args.num_tries)
                 },
+                "seeds": seeds,
             }
             df = pl.DataFrame(results)
 
