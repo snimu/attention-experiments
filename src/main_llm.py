@@ -885,7 +885,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     f"avg_batch_times_{i+1}": str(avg_batch_time_list[i])
                     for i in range(args.num_tries)
                 },
-                "seeds": seeds,
+                "seeds": str(seeds),
             }
             df = pl.DataFrame(results)
 
