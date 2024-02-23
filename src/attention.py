@@ -138,6 +138,7 @@ class VanillaCausal(nn.Module):
             qkv_norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
+            logit_scalar: Callable[[int, int], float] = lambda d, h: (d * h)**0.5,
     ):
         assert feature_dim % num_heads == 0
         assert feature_dim % 2 == 0
@@ -146,6 +147,11 @@ class VanillaCausal(nn.Module):
         self.dtype = dtype
         self.feature_dim = feature_dim
         self.num_heads = num_heads
+
+        self.dim_per_head = feature_dim // self.num_heads
+        assert self.dim_per_head % 2 == 0
+        self.logit_scale = logit_scalar(feature_dim, num_heads)
+
         self.x_norm = x_norm
         self.qkv_norm = qkv_norm
         self.seq_len = 32  # initial sequence length from training --- updated in forward
@@ -166,17 +172,15 @@ class VanillaCausal(nn.Module):
             self.update_mask(seq_len)
 
         assert feature_dim == self.feature_dim
-        dim_per_head = feature_dim // self.num_heads
-        assert dim_per_head % 2 == 0
 
         cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
 
-        Q = Q.view(batch_size, seq_len, self.num_heads, dim_per_head)
-        K = K.view(batch_size, seq_len, self.num_heads, dim_per_head)
-        V = V.view(batch_size, seq_len, self.num_heads, dim_per_head)
-        cos_rot = cos_rot.view(seq_len, self.num_heads, dim_per_head)
-        sin_rot = sin_rot.view(seq_len, self.num_heads, dim_per_head)
+        Q = Q.view(batch_size, seq_len, self.num_heads, self.dim_per_head)
+        K = K.view(batch_size, seq_len, self.num_heads, self.dim_per_head)
+        V = V.view(batch_size, seq_len, self.num_heads, self.dim_per_head)
+        cos_rot = cos_rot.view(seq_len, self.num_heads, self.dim_per_head)
+        sin_rot = sin_rot.view(seq_len, self.num_heads, self.dim_per_head)
 
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
@@ -187,7 +191,7 @@ class VanillaCausal(nn.Module):
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
 
         # (batch, heads, seq_len, dim_per_head)
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(torch.tensor(dim_per_head))
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / self.logit_scale
         scores = scores.masked_fill(self.mask == 0, -1e9)
 
         scores = torch.softmax(scores, dim=-1)

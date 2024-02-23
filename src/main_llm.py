@@ -21,10 +21,7 @@ except NameError:
 from typing import Callable
 import argparse
 import copy
-import functools
 from functools import partial
-import urllib
-import zipfile
 import os
 from time import perf_counter
 
@@ -243,6 +240,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
+            logit_scalar=kwargs['logit_scalar'],
         )
     elif attn_type == "hydra":
         attn = attention.HydraCausal(
@@ -772,6 +770,24 @@ def get_qkv_factor(attn_type: str) -> int:
         return 3
     
 
+def get_logit_scalar(logit_scalar: list[str]) -> Callable[[int, int], float]:
+    if logit_scalar == "d":
+        return lambda d, h: d 
+    elif logit_scalar == "sqrt_d":
+        return lambda d, h: d**.5
+    elif logit_scalar == "sqrt_dh":
+        return lambda d, h: (d/h)**.5
+
+
+def filter_logit_scalar(attn_type: str, logit_scalar: list[str]) -> list[str]:
+    if attn_type in ["identity", "hlb-gpt", "torchMHA", "hydra", "hercules", "zeus"]:
+        return ["sqrt_d"]
+    elif attn_type == "vanilla":
+        return list(set(logit_scalar))
+
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
+    
+
 def get_printable_setting(setting: dict) -> str:
     return (
         "{\n"
@@ -803,6 +819,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_qkv_norm": uqkvn,
                 "use_qkv_weight": uqkvw,
                 "qkv_factor": get_qkv_factor(attn_type),
+                "logit_scalar": get_logit_scalar(ls),
             }
             # The functions below pick the correct default values for each attention type
             # even if the wrong ones were given in the command line.
@@ -812,6 +829,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for fm_attn in filter_feature_map_attn(attn_type, args.feature_map_attn)
             for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
             for uqkvn, uqkvw in filter_use_qkv_norm(attn_type, args.use_qkv_norm, args.use_qkv_weight)
+            for ls in filter_logit_scalar(attn_type, args.logit_scalar)
         ]
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
@@ -976,6 +994,13 @@ def get_args() -> argparse.Namespace:
         default=0,
         nargs="+",
     )
+    parser.add_argument(
+        "--logit_scalar",
+        type=str,
+        default=["sqrt_d"],
+        choices=["d", "sqrt_d", "sqrt_dh"],
+        nargs="+",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -990,6 +1015,7 @@ def get_args() -> argparse.Namespace:
     args.use_qkv_norm = [bool(uqkvn) for uqkvn in args.use_qkv_norm]
     args.use_qkv_weight = [args.use_qkv_weight] if isinstance(args.use_qkv_weight, int) else args.use_qkv_weight
     args.use_qkv_weight = [bool(uqkvw) for uqkvw in args.use_qkv_weight]
+    args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
 
     return args
 
