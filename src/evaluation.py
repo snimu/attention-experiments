@@ -83,19 +83,39 @@ def plot_loss_curves_llm_single_attn(
 
 
 def plot_loss_curves_avg_contrast_1500_steps(to_plot: str = "val_loss") -> None:
-    for attn_type, color in zip(
-            ("identity", "hlb-gpt", "torchMHA", "vanilla", "hydra", "hercules", "zeus"),
-            ("blue", "violet", "brown", "orange", "green", "red", "purple"),
-            strict=True,
-    ):
+    attn_types = (
+        pl.scan_csv("../results/results_llm_1500_steps.csv")
+        .select(pl.col("attn_type"))
+        .collect()
+        ["attn_type"]
+        .unique()
+        .to_list()
+    )
+    settings = []
+    for attn_type in attn_types:
+        feature_map_combinations = (
+            pl.scan_csv("../results/results_llm_1500_steps.csv")
+            .filter(pl.col("attn_type") == attn_type)
+            .select(pl.col("feature_map_qkv"), pl.col("feature_map_attn"))
+            .collect()
+            .unique()
+        )
+        for (feature_map_qkv, feature_map_attn) in zip(
+                feature_map_combinations["feature_map_qkv"], feature_map_combinations["feature_map_attn"]
+        ):
+            settings.append((attn_type, feature_map_qkv, feature_map_attn))
+    colors = ("blue", "violet", "brown", "orange", "green", "red", "purple")[:len(settings)]
+    for (attn_type, feature_map_qkv, feature_map_attn), color in zip(settings, colors, strict=True):
         xs, ys, avg_y = load_xs_ys_avg_y(
             file = "../results/results_llm_1500_steps.csv",
             attn_type = attn_type,
             to_plot=to_plot,
+            feature_map_attn=feature_map_attn,
+            feature_map_qkv=feature_map_qkv,
         )
-        plt.plot(xs, avg_y, color=color, label=attn_type)
+        plt.plot(xs, avg_y, color=color, label=f"{attn_type} ({feature_map_qkv}-{feature_map_attn})")
         for y in ys:
-            plt.plot(xs, y, color, alpha=0.1)
+            plt.plot(xs, y, color, alpha=0.4)
     plt.xlabel("Steps")
     plt.ylabel("Loss")
     plt.title(f"Average {to_plot}")
@@ -302,10 +322,11 @@ if __name__ == "__main__":
     #     from_step=0,
     # )
     # plot_loss_curves_feature_maps("hydra")
-    plot_loss_curves_diffusion_single_attn(
-        file="../results/results_diffusion_20_epochs.csv",
-        attn_type="hydra",
-        to_plot="losses",
-        show_all_trials=True,
-        from_step=0,
-    )
+    # plot_loss_curves_diffusion_single_attn(
+    #     file="../results/results_diffusion_20_epochs.csv",
+    #     attn_type="hydra",
+    #     to_plot="losses",
+    #     show_all_trials=True,
+    #     from_step=0,
+    # )
+    plot_loss_curves_avg_contrast_1500_steps(to_plot="val_loss")
