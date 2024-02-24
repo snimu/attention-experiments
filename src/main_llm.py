@@ -788,17 +788,32 @@ def filter_logit_scalar(attn_type: str, logit_scalar: list[str]) -> list[str]:
     raise ValueError(f"Unrecognized attention type: {attn_type}")
     
 
+
+def name_logit_scalar(logic_scalar: Callable[[int, int], float]):
+    d, h = 16, 4
+    result = logic_scalar(d, h)
+    if round(result) == d:
+        return "d"
+    elif round(result) == 4:
+        return "sqrt_d"
+    elif round(result) == 2:
+        return "sqrt_dh"
+    else:
+        return str(logic_scalar)
+
+
 def get_printable_setting(setting: dict) -> str:
+        
+    def choose_text(key, val):
+        if key in ["feature_map_qkv", "feature_map_attn"]:
+            return f"{key}: {feature_maps.ACTIVATION_FUNCTION_TO_NAME[val]}"
+        elif key == "logit_scalar":
+            return f"{key}: {name_logit_scalar(setting[key])}"
+        else:
+            return f"{key}: {val}"
     return (
         "{\n"
-        + "\n".join(
-            [
-                f"    {k}: {v}," 
-                if k not in ["feature_map_qkv", "feature_map_attn"]
-                else f"    {k}: {feature_maps.ACTIVATION_FUNCTION_TO_NAME[v]},"
-                for k, v in setting.items()
-            ]
-        )
+        + "\n".join([choose_text(k, v) for k, v in setting.items()])
         + "\n}"
     )
 
@@ -880,6 +895,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_x_norm": setting.get("use_x_norm", False),
                 "use_qkv_norm": setting.get("use_qkv_norm", False),
                 "use_qkv_weight": setting.get("use_qkv_weight", False),
+                "logit_scalar": name_logit_scalar(setting.get("logit_scalar", None)),
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
@@ -932,9 +948,9 @@ def train_and_eval(hyp, args: argparse.Namespace):
         df = pl.read_csv('results_llm.csv')
         df = df.sort(by="avg_val_loss")
         rich.print("\n\nSorted Results:\n\n")
-        rich.print(str(df.columns[:9]))
+        rich.print(str(df.columns[:10]))
         for row in df.iter_rows():
-            rich.print(str(row[:9]))
+            rich.print(str(row[:10]))
 
 
 def get_args() -> argparse.Namespace:
