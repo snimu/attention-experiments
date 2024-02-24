@@ -190,18 +190,19 @@ class AttentionBlock(nn.Module):
     
 
 def create_layernorms(
+        residual_depth: int,
         use_x_norm: bool, 
         use_qkv_norm: bool, 
         qkv_factor: int = 3,
         use_qkv_weight: bool = False,
 ) -> tuple[nn.Module, nn.Module]:
     x_norm = LayerNorm(
-        hyp['net']['residual_depth'], 
+        residual_depth, 
         bias=False
     ) if use_x_norm else nn.Identity()
 
     qkv_norm = LayerNorm(
-        int(hyp['net']['residual_depth']*qkv_factor), 
+        int(residual_depth*qkv_factor), 
         bias=False, 
         weight=use_qkv_weight,
     ) if use_qkv_norm else nn.Identity()
@@ -210,6 +211,7 @@ def create_layernorms(
 
 def create_attention(attn_type, **kwargs):  # kwargs for things that I actually want to vary across experiments
     x_norm, qkv_norm = create_layernorms(
+        kwargs['residual_depth'],
         use_x_norm=kwargs['use_x_norm'],
         use_qkv_norm=kwargs['use_qkv_norm'],
         qkv_factor=kwargs['qkv_factor'],
@@ -220,13 +222,13 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         attn = torch.nn.Identity()
     elif attn_type == "hlb-gpt":
         attn = AttentionBlock(
-            num_features=hyp['net']['residual_depth'],
+            num_features=kwargs['residual_depth'],
             sequence_length=hyp['misc']['sequence_length']['max'],
             num_heads=hyp['net']['num_heads'],
         )
     elif attn_type == "torchMHA":
         attn = attention.TorchMHACausal(
-            feature_dim=hyp['net']['residual_depth'],
+            feature_dim=kwargs['residual_depth'],
             num_heads=hyp['net']['num_heads'],
             x_norm=x_norm,
             device=hyp['misc']['device'],
@@ -234,7 +236,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         )
     elif attn_type == "vanilla":
         attn = attention.VanillaCausal(
-            feature_dim=hyp['net']['residual_depth'],
+            feature_dim=kwargs['residual_depth'],
             num_heads=hyp['net']['num_heads'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
@@ -244,7 +246,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         )
     elif attn_type == "hydra":
         attn = attention.HydraCausal(
-            feature_dim=hyp['net']['residual_depth'],
+            feature_dim=kwargs['residual_depth'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
@@ -255,7 +257,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         )
     elif attn_type == "hercules":
         attn = attention.HerculesCausal(
-            feature_dim=hyp['net']['residual_depth'],
+            feature_dim=kwargs['residual_depth'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
@@ -266,7 +268,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         )
     elif attn_type == "zeus":
         attn = attention.ZeusCausal(
-            feature_dim=hyp['net']['residual_depth'],
+            feature_dim=kwargs['residual_depth'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
@@ -339,11 +341,11 @@ class SpeedyLangNet(nn.Module):
 def make_net(attn_type: str, **kwargs):
     # Note, you have to specify any arguments overlapping with defaults (i.e. everything but in/out depths) as kwargs so that they are properly overridden (TODO cleanup somehow?)
     network_dict = nn.ModuleDict({
-        'embedding': nn.Embedding(hyp['misc']['num_tokens'], hyp['net']['residual_depth'], scale_grad_by_freq=True),
-        'norm': LayerNorm(hyp['net']['residual_depth'], bias=False),
-        'mlp_layers': nn.ModuleList([MLPBlock(hyp['net']['residual_depth']) for _ in range(hyp['net']['num_blocks'])]),
+        'embedding': nn.Embedding(hyp['misc']['num_tokens'], kwargs['residual_depth'], scale_grad_by_freq=True),
+        'norm': LayerNorm(kwargs['residual_depth'], bias=False),
+        'mlp_layers': nn.ModuleList([MLPBlock(kwargs['residual_depth']) for _ in range(hyp['net']['num_blocks'])]),
         'attn_layers': nn.ModuleList([create_attention(attn_type, **kwargs) for _ in range(hyp['net']['num_blocks'])]),
-        'outputs': nn.Linear(hyp['net']['residual_depth'], hyp['misc']['num_tokens'], bias=False),
+        'outputs': nn.Linear(kwargs['residual_depth'], hyp['misc']['num_tokens'], bias=False),
     })
 
     net = SpeedyLangNet(network_dict)
@@ -786,7 +788,10 @@ def filter_logit_scalar(attn_type: str, logit_scalar: list[str]) -> list[str]:
         return list(set(logit_scalar))
 
     raise ValueError(f"Unrecognized attention type: {attn_type}")
-    
+
+
+def filter_residual_depth(residual_depth: list[int]) -> list[int]:
+    return [i for i in list(set(residual_depth)) if (i > 0) and (i % 3 == 0) and (i % 8 == 0)]
 
 
 def name_logit_scalar(logic_scalar: Callable[[int, int], float]):
@@ -835,6 +840,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_qkv_weight": uqkvw,
                 "qkv_factor": get_qkv_factor(attn_type),
                 "logit_scalar": get_logit_scalar(ls),
+                "residual_depth": rd,
             }
             # The functions below pick the correct default values for each attention type
             # even if the wrong ones were given in the command line.
@@ -845,6 +851,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
             for uqkvn, uqkvw in filter_use_qkv_norm(attn_type, args.use_qkv_norm, args.use_qkv_weight)
             for ls in filter_logit_scalar(attn_type, args.logit_scalar)
+            for rd in filter_residual_depth(args.residual_depth)
         ]
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
@@ -896,6 +903,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_qkv_norm": setting.get("use_qkv_norm", False),
                 "use_qkv_weight": setting.get("use_qkv_weight", False),
                 "logit_scalar": name_logit_scalar(setting.get("logit_scalar", None)),
+                "residual_depth": setting.get("residual_depth", None),
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
@@ -948,9 +956,9 @@ def train_and_eval(hyp, args: argparse.Namespace):
         df = pl.read_csv('results_llm.csv')
         df = df.sort(by="avg_val_loss")
         rich.print("\n\nSorted Results:\n\n")
-        rich.print(str(df.columns[:10]))
+        rich.print(str(df.columns[:11]))
         for row in df.iter_rows():
-            rich.print(str(row[:10]))
+            rich.print(str(row[:11]))
 
 
 def get_args() -> argparse.Namespace:
@@ -1017,6 +1025,12 @@ def get_args() -> argparse.Namespace:
         choices=["d", "sqrt_d", "sqrt_dh"],
         nargs="+",
     )
+    parser.add_argument(
+        "--residual_depth",
+        type=int,
+        default=hyp["net"]["residual_depth"],
+        nargs="+",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -1032,6 +1046,7 @@ def get_args() -> argparse.Namespace:
     args.use_qkv_weight = [args.use_qkv_weight] if isinstance(args.use_qkv_weight, int) else args.use_qkv_weight
     args.use_qkv_weight = [bool(uqkvw) for uqkvw in args.use_qkv_weight]
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
+    args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
 
     return args
 
