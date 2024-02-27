@@ -9,6 +9,7 @@ This is because I want this to be simple and comparable, and for torch.compile t
 They are also written for training, because that's what I'm interested in.
 """
 
+import math
 from typing import Callable, Union
 
 import torch 
@@ -138,7 +139,7 @@ class VanillaCausal(nn.Module):
             qkv_norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
-            logit_scalar: Callable[[int, int], float] = lambda d, h: (d * h)**0.5,
+            logit_scale_fn: Callable[[int, int], float] = lambda d, h: math.sqrt(d / h),
     ):
         assert feature_dim % num_heads == 0
         assert feature_dim % 2 == 0
@@ -150,7 +151,7 @@ class VanillaCausal(nn.Module):
 
         self.dim_per_head = feature_dim // self.num_heads
         assert self.dim_per_head % 2 == 0
-        self.logit_scale = logit_scalar(feature_dim, num_heads)
+        self.logit_scale = logit_scale_fn(feature_dim, num_heads)
 
         self.x_norm = x_norm
         self.qkv_norm = qkv_norm

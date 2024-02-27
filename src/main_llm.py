@@ -24,6 +24,7 @@ import copy
 from functools import partial
 import os
 from time import perf_counter
+import math
 
 import rich
 import torch
@@ -242,7 +243,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             qkv_norm=qkv_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
-            logit_scalar=kwargs['logit_scalar'],
+            logit_scale_fn=kwargs['logit_scalar'],
         )
     elif attn_type == "hydra":
         attn = attention.HydraCausal(
@@ -776,9 +777,9 @@ def get_logit_scalar(logit_scalar: list[str]) -> Callable[[int, int], float]:
     if logit_scalar == "d":
         return lambda d, h: d 
     elif logit_scalar == "sqrt_d":
-        return lambda d, h: d**.5
+        return lambda d, h: math.sqrt(d)
     elif logit_scalar == "sqrt_dh":
-        return lambda d, h: (d/h)**.5
+        return lambda d, h: math.sqrt(d/h)
 
 
 def filter_logit_scalar(attn_type: str, logit_scalar: list[str]) -> list[str]:
