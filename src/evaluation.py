@@ -6,7 +6,9 @@ import itertools
 
 import polars as pl
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np 
+import torch
 
 
 def series_to_array(series: pl.Series) -> np.ndarray:
@@ -19,6 +21,9 @@ def load_xs_ys_avg_y(
         feature_map_qkv: str | None = None,
         feature_map_attn: str | None = None,
         use_out_proj: bool | None = None,
+        use_x_norm: bool | None = None,
+        use_qkv_norm: bool | None = None,
+        use_qkv_weight: bool | None = None,
         identity_weight: float | None = None,
         to_plot: str = "val_loss",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -34,6 +39,12 @@ def load_xs_ys_avg_y(
         filters &= (pl.col("use_out_proj") == use_out_proj)
     if identity_weight is not None:
         filters &= (pl.col("identity_weight") == identity_weight)
+    if use_x_norm is not None:
+        filters &= (pl.col("use_x_norm") == use_x_norm)
+    if use_qkv_norm is not None:
+        filters &= (pl.col("use_qkv_norm") == use_qkv_norm)
+    if use_qkv_weight is not None:
+        filters &= (pl.col("use_qkv_weight") == use_qkv_weight)
 
     df = pl.scan_csv(file).filter(filters).collect()
 
@@ -82,19 +93,102 @@ def plot_loss_curves_llm_single_attn(
     plt.show()
 
 
-def plot_loss_curves_avg_contrast_1500_steps(to_plot: str = "val_loss") -> None:
-    attn_types = (
-        pl.scan_csv("../results/results_llm_1500_steps.csv")
+def get_attn_types(file: str) -> list[str]:
+    return (
+        pl.scan_csv(file)
         .select(pl.col("attn_type"))
         .collect()
         ["attn_type"]
         .unique()
         .to_list()
     )
+
+
+def get_rand_colors(n: int, random: bool = False) -> list:
+    if n <= 8:
+        colors = mcolors.BASE_COLORS
+    elif n <= 10:
+        colors = mcolors.TABLEAU_COLORS
+    else:
+        colors = mcolors.CSS4_COLORS
+
+    colors = list(colors)
+    if random:
+        colors = [colors[i] for i in torch.randperm(n)]
+
+    colors = colors[:n]
+
+    return colors
+
+
+
+def get_unique_settings(
+        file: str,
+        targets: list[str],
+        attn_type: str | None = None,
+) -> list[str | bool | float]:
+    attn_types = get_attn_types(file) if attn_type is None else [attn_type]
+    settings = []
+    for attn_type in attn_types:
+        combinations = (
+            pl.scan_csv(file)
+            .filter(pl.col("attn_type") == attn_type)
+            .select(*[pl.col(target) for target in targets])
+            .collect()
+            .unique()
+        )
+        for features in zip(
+                *[combinations[target] for target in targets]
+        ):
+            settings.append((attn_type,) + tuple(features))
+    return settings
+
+
+def plot_llm_1500_steps_by_norm_position(
+        file: str = "../results/results_llm_1500_steps.csv",
+        to_plot: str = "val_loss",
+        attn_type: str | None  = "vanilla",
+        show_all_plots: bool = False,
+) -> None:
+    settings = get_unique_settings(
+        file, 
+        targets=["use_x_norm", "use_qkv_norm"], 
+        attn_type=attn_type
+    )
+    colors = get_rand_colors(len(settings))
+    for (attn_type, use_x_norm, use_qkv_norm), color in zip(settings, colors, strict=True):
+        xs, ys, avg_y = load_xs_ys_avg_y(
+            file=file,
+            attn_type=attn_type,
+            use_x_norm=use_x_norm,
+            use_qkv_norm=use_qkv_norm,
+            to_plot=to_plot,
+        )
+        label = f"{attn_type}"
+        if use_x_norm:
+            label += " x-norm"
+        if use_qkv_norm:
+            label += " qkv-norm"
+        plt.plot(xs, avg_y, color=color, label=label)
+        if show_all_plots:
+            for y in ys:
+                plt.plot(xs, y, color, alpha=0.2)
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.title(f"Average {to_plot}")
+    plt.legend()
+    plt.show()
+
+
+def plot_loss_curves_avg_contrast_1500_steps(
+        file: str = "../results/results_llm_1500_steps.csv",
+        to_plot: str = "val_loss",
+) -> None:
+    attn_types = get_attn_types(file)
     settings = []
     for attn_type in attn_types:
         feature_map_combinations = (
-            pl.scan_csv("../results/results_llm_1500_steps.csv")
+            pl.scan_csv(file)
             .filter(pl.col("attn_type") == attn_type)
             .select(pl.col("feature_map_qkv"), pl.col("feature_map_attn"))
             .collect()
@@ -115,7 +209,7 @@ def plot_loss_curves_avg_contrast_1500_steps(to_plot: str = "val_loss") -> None:
         )
         plt.plot(xs, avg_y, color=color, label=f"{attn_type} ({feature_map_qkv}-{feature_map_attn})")
         for y in ys:
-            plt.plot(xs, y, color, alpha=0.4)
+            plt.plot(xs, y, color, alpha=0.2)
     plt.xlabel("Steps")
     plt.ylabel("Loss")
     plt.title(f"Average {to_plot}")
@@ -329,4 +423,8 @@ if __name__ == "__main__":
     #     show_all_trials=True,
     #     from_step=0,
     # )
-    plot_loss_curves_avg_contrast_1500_steps(to_plot="val_loss")
+    # plot_loss_curves_avg_contrast_1500_steps(
+    #     file="../results/results_llm_hydra_feature_maps.csv",
+    #     to_plot="val_loss",
+    # )
+    plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
