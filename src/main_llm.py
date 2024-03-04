@@ -870,8 +870,9 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 torch.manual_seed(seed)
                 printable_setting = get_printable_setting(setting)
                 start_header = (
-                    f"\n{attn_type} ({int(setting_num*args.num_tries+idx+1)}/{int(len(settings)*args.num_tries)} "
-                    f"--- setting {setting_num+1}/{len(settings)} "
+                    f"\n{attn_type.upper()} "
+                    f"{int(setting_num*args.num_tries+idx+1)}/{int(len(settings)*args.num_tries)} "
+                    f"(setting {setting_num+1}/{len(settings)} "
                     f"--- try {idx+1}/{args.num_tries}) "
                     f"\nsetting={printable_setting} "
                 )
@@ -940,7 +941,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                         df.write_csv(f, include_header=False)
 
             done_header = (
-                f"\n{attn_type} "
+                f"\n{attn_type.upper()} "
                 f"(setting {setting_num+1}/{len(settings)}) "
                 f"\nsetting={printable_setting} "
                 f"\navg_val_loss={results['avg_val_loss']:.2f} "
