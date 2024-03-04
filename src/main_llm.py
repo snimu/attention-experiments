@@ -818,8 +818,8 @@ def get_printable_setting(setting: dict) -> str:
         else:
             return f"{key}: {val}"
     return (
-        "{\n"
-        + "\n".join([choose_text(k, v) for k, v in setting.items()])
+        "{\n  "
+        + "\n  ".join([choose_text(k, v) for k, v in setting.items()])
         + "\n}"
     )
 
