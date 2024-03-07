@@ -177,6 +177,7 @@ def plot_llm_1500_steps_by_norm_position(
     plt.ylabel("Loss")
     plt.title(f"Average {to_plot}")
     plt.legend()
+    plt.grid()
     plt.show()
 
 
@@ -423,8 +424,8 @@ if __name__ == "__main__":
     #     show_all_trials=True,
     #     from_step=0,
     # )
-    # plot_loss_curves_avg_contrast_1500_steps(
-    #     file="../results/results_llm_hydra_feature_maps.csv",
-    #     to_plot="val_loss",
-    # )
-    plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
+    plot_loss_curves_avg_contrast_1500_steps(
+        file="../results/results_llm_hydra_feature_maps.csv",
+        to_plot="val_loss",
+    )
+    # plot_llm_1500_steps_by_norm_position(attn_type="hydra", to_plot="val_loss")
