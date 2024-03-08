@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np 
 import torch
+import colorsys
 
 
 def series_to_array(series: pl.Series) -> np.ndarray:
@@ -25,6 +26,8 @@ def load_xs_ys_avg_y(
         use_qkv_norm: bool | None = None,
         use_qkv_weight: bool | None = None,
         identity_weight: float | None = None,
+        residual_depth: int | None = None,
+        logit_scalar: str | None = None,
         to_plot: str = "val_loss",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load x, y, and average y from a CSV file."""
@@ -45,6 +48,10 @@ def load_xs_ys_avg_y(
         filters &= (pl.col("use_qkv_norm") == use_qkv_norm)
     if use_qkv_weight is not None:
         filters &= (pl.col("use_qkv_weight") == use_qkv_weight)
+    if residual_depth is not None:
+        filters &= (pl.col("residual_depth") == residual_depth)
+    if logit_scalar is not None:
+        filters &= (pl.col("logit_scalar") == logit_scalar)
 
     df = pl.scan_csv(file).filter(filters).collect()
 
@@ -121,6 +128,29 @@ def get_rand_colors(n: int, random: bool = False) -> list:
     return colors
 
 
+def generate_distinct_colors(n):
+    """
+    Generates n visually distinct colors.
+
+    Parameters:
+        n (int): The number of distinct colors to generate.
+
+    Returns:
+        list: A list of n visually distinct colors in hex format.
+    """
+    colors = []
+    for i in range(n):
+        hue = i / n
+        # Fixing saturation and lightness/value to 0.9 for bright colors
+        # You can adjust these values for different color variations
+        lightness = 0.5
+        saturation = 0.9
+        rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
+        hex_color = '#%02x%02x%02x' % (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255))
+        colors.append(hex_color)
+    
+    return colors
+
 
 def get_unique_settings(
         file: str,
@@ -181,6 +211,44 @@ def plot_llm_1500_steps_by_norm_position(
     plt.show()
 
 
+def plot_llm_1000_steps_100_tries_by_norm_position(
+        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        to_plot: str = "val_loss",
+        attn_type: str | None  = "vanilla",
+        show_all_plots: bool = False,
+) -> None:
+    settings = get_unique_settings(
+        file, 
+        targets=["use_x_norm", "use_qkv_norm"], 
+        attn_type=attn_type
+    )
+    colors = generate_distinct_colors(len(settings))
+    for (attn_type, use_x_norm, use_qkv_norm), color in zip(settings, colors, strict=True):
+        xs, ys, avg_y = load_xs_ys_avg_y(
+            file=file,
+            attn_type=attn_type,
+            use_x_norm=use_x_norm,
+            use_qkv_norm=use_qkv_norm,
+            logit_scalar="sqrt_dh",
+            to_plot=to_plot,
+        )
+        label = f"{attn_type}"
+        if use_x_norm:
+            label += " x-norm"
+        if use_qkv_norm:
+            label += " qkv-norm"
+        plt.plot(xs, avg_y, color=color, label=label)
+        if show_all_plots:
+            for y in ys:
+                plt.plot(xs, y, color, alpha=0.2)
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.title(f"Average {to_plot}")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
 def plot_loss_curves_avg_contrast_1500_steps(
         file: str = "../results/results_llm_1500_steps.csv",
         to_plot: str = "val_loss",
@@ -202,7 +270,7 @@ def plot_loss_curves_avg_contrast_1500_steps(
     colors = ("blue", "violet", "brown", "orange", "green", "red", "purple")[:len(settings)]
     for (attn_type, feature_map_qkv, feature_map_attn), color in zip(settings, colors, strict=True):
         xs, ys, avg_y = load_xs_ys_avg_y(
-            file = "../results/results_llm_1500_steps.csv",
+            file = file,
             attn_type = attn_type,
             to_plot=to_plot,
             feature_map_attn=feature_map_attn,
@@ -424,8 +492,9 @@ if __name__ == "__main__":
     #     show_all_trials=True,
     #     from_step=0,
     # )
-    plot_loss_curves_avg_contrast_1500_steps(
-        file="../results/results_llm_hydra_feature_maps.csv",
-        to_plot="val_loss",
-    )
-    # plot_llm_1500_steps_by_norm_position(attn_type="hydra", to_plot="val_loss")
+    # plot_loss_curves_avg_contrast_1500_steps(
+    #     file="../results/results_llm_hydra_feature_maps.csv",
+    #     to_plot="val_loss",
+    # )
+    # plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
+    plot_llm_1000_steps_100_tries_by_norm_position(attn_type="vanilla", to_plot="val_loss")
