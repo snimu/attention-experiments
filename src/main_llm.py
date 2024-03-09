@@ -583,6 +583,10 @@ def train(num_steps, attn_type, **kwargs):
     train_accs = []
     val_accs = []
     avg_batch_times = []
+    tokens_seen_train = []
+    tokens_seen_val = []
+    epochs_train = []
+    epochs_val = []
 
     batch_iter_kwargs = {'data_dict': data, 'key': 'train', 'batchsize': batchsize, 'num_steps': total_microbatch_steps, 'sequence_length': hyp['misc']['sequence_length']}
 
@@ -610,6 +614,8 @@ def train(num_steps, attn_type, **kwargs):
 
         loss.div(current_accumulate_steps).backward()
         tokens_seen += current_batchsize * current_sequence_length
+        tokens_seen_train.append(tokens_seen)
+        epochs_train.append(tokens_seen//len(data['train']))
         microbatches_since_last_eval += 1
 
         ## Once we've accumulated steps over all of our microbatches, take a single full-batchsize step.
@@ -649,6 +655,8 @@ def train(num_steps, attn_type, **kwargs):
             epoch = tokens_seen//len(data['train'])
 
             if crnt_steps % hyp['opt']['eval_iter'] == 0:
+                tokens_seen_val.append(tokens_seen)
+                epochs_val.append(tokens_seen//len(data['train']))
                 ender.record()
                 torch.cuda.synchronize()
                 time_secs += 1e-3 * starter.elapsed_time(ender)
@@ -676,7 +684,7 @@ def train(num_steps, attn_type, **kwargs):
                 net.train() # Functionally shouldn't do anything with the base network, just adding this to guard against any bugs for any future changes that do require this <3 <3 <3
         microbatch_step += 1
 
-    return net, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times
+    return net, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times, tokens_seen_train, tokens_seen_val
 
 
 def filter_use_out_proj_vals(attn_type: str, use_out_proj: list[bool]) -> list[bool]:
@@ -885,7 +893,13 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 )
                 print_training_details(logging_columns_list, column_heads_only=True) ## print out the training column heads before we print the actual content for each run.
                 t0 = perf_counter()
-                _, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times = train(num_steps=args.num_steps, attn_type=attn_type, **setting)
+                (
+                    _, val_loss, 
+                    train_losses, val_losses, 
+                    train_accs, val_accs, 
+                    avg_batch_times,
+                    tokens_seen_train, tokens_seen_val,
+                ) = train(num_steps=args.num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter() - t0)
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
@@ -927,6 +941,14 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 },
                 **{
                     f"avg_batch_times_{i+1}": str(avg_batch_time_list[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"tokens_seen_train_{i+1}": str(tokens_seen_train[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"tokens_seen_val_{i+1}": str(tokens_seen_val[i])
                     for i in range(args.num_tries)
                 },
                 "seeds": str(seeds),
