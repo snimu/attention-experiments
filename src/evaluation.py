@@ -3,6 +3,7 @@
 import ast
 import copy
 import itertools
+import math
 
 import polars as pl
 import matplotlib.pyplot as plt
@@ -237,14 +238,43 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
-        plt.plot(xs, avg_y, color=color, label=label)
         if show_all_plots:
             for y in ys:
-                plt.plot(xs, y, color, alpha=0.2)
+                plt.plot(xs, y, color, alpha=0.3/math.sqrt(len(ys)))
+        plt.plot(xs, avg_y, color=color, label=label, linewidth=2)
+
     plt.xlabel("Steps")
     plt.ylabel("Loss")
     plt.title(f"Average {to_plot}")
     plt.legend()
+    plt.grid()
+    plt.show()
+
+
+def plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
+        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        attn_type: str = "vanilla",
+        to_plot: str = "val_loss",
+        show_all_plots: bool = True,
+        use_x_norm: bool = False,
+        use_qkv_norm: bool = False,
+        logit_scalar: str = "sqrt_dh",
+) -> None:
+    xs, ys, avg_y = load_xs_ys_avg_y(
+        file=file,
+        attn_type=attn_type,
+        use_x_norm=use_x_norm,
+        use_qkv_norm=use_qkv_norm,
+        logit_scalar=logit_scalar,
+        to_plot=to_plot,
+    )
+    if show_all_plots:
+        for y in ys:
+            plt.plot(xs, y, alpha=0.3, color="pink")
+    plt.plot(xs, avg_y, label=f"{attn_type}: mean", color="red", linewidth=2)
+    plt.xlabel("Steps")
+    plt.ylabel(to_plot)
+    plt.title(f"Average {to_plot}")
     plt.grid()
     plt.show()
 
@@ -497,4 +527,17 @@ if __name__ == "__main__":
     #     to_plot="val_loss",
     # )
     # plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
-    plot_llm_1000_steps_100_tries_by_norm_position(attn_type="vanilla", to_plot="val_loss")
+    to_plot = "val_acc"
+    plot_llm_1000_steps_100_tries_by_norm_position(
+        attn_type="vanilla", 
+        to_plot=to_plot,
+        show_all_plots=False,
+    )
+    plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
+        attn_type="vanilla",
+        to_plot=to_plot,
+        show_all_plots=True,
+        use_x_norm=False,
+        use_qkv_norm=False,
+        logit_scalar="sqrt_dh",
+    )
