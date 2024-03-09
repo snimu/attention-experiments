@@ -912,8 +912,9 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     _, val_loss, 
                     train_losses, val_losses, 
                     train_accs, val_accs, 
-                    avg_batch_times,
+                    avg_batch_times, 
                     tokens_seen_train, tokens_seen_val,
+                    epochs_train, epochs_val,
                     param_counts_list, a100_mfu_list,
                     grad_norm_list,
                 ) = train(num_steps=args.num_steps, attn_type=attn_type, **setting)
@@ -966,6 +967,14 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 },
                 **{
                     f"tokens_seen_val_{i+1}": str(tokens_seen_val[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"epochs_train_{i+1}": str(epochs_train[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"epochs_val_{i+1}": str(epochs_val[i])
                     for i in range(args.num_tries)
                 },
                 **{
