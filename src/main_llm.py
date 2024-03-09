@@ -818,8 +818,8 @@ def get_printable_setting(setting: dict) -> str:
         else:
             return f"{key}: {val}"
     return (
-        "{\n  "
-        + "\n  ".join([choose_text(k, v) for k, v in setting.items()])
+        "{\n\t"
+        + "\n\t".join([choose_text(k, v) for k, v in setting.items()])
         + "\n}"
     )
 
@@ -874,7 +874,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     f"{int(setting_num*args.num_tries+idx+1)}/{int(len(settings)*args.num_tries)} "
                     f"(setting {setting_num+1}/{len(settings)} "
                     f"--- try {idx+1}/{args.num_tries}) "
-                    f"\nsetting={printable_setting} "
+                    f"\n\nsetting={printable_setting} "
                 )
                 divider = ":" * max(len(line) for line in start_header.split("\n"))
                 rich.print(
@@ -943,8 +943,8 @@ def train_and_eval(hyp, args: argparse.Namespace):
             done_header = (
                 f"\n{attn_type.upper()} "
                 f"(setting {setting_num+1}/{len(settings)}) "
-                f"\nsetting={printable_setting} "
-                f"\navg_val_loss={results['avg_val_loss']:.2f} "
+                f"\n\nsetting={printable_setting} "
+                f"\n\navg_val_loss={results['avg_val_loss']:.2f} "
             )
             divider = ":" * max(len(line) for line in done_header.split("\n"))
             rich.print(
