@@ -1101,6 +1101,7 @@ def get_args() -> argparse.Namespace:
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
 
+    rich.print(args.__dict__)
     return args
 
 
