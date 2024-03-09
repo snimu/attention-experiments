@@ -587,6 +587,9 @@ def train(num_steps, attn_type, **kwargs):
     tokens_seen_val = []
     epochs_train = []
     epochs_val = []
+    param_counts_list = []
+    a100_mfu_list = []
+    grad_norm_list = []
 
     batch_iter_kwargs = {'data_dict': data, 'key': 'train', 'batchsize': batchsize, 'num_steps': total_microbatch_steps, 'sequence_length': hyp['misc']['sequence_length']}
 
@@ -636,6 +639,7 @@ def train(num_steps, attn_type, **kwargs):
             # There could be improvements or losses in changing the dithering strategy, since determinism and gradient descent can lead to some very not-so-nice (and subtle) loss oscillations.
             # First, manually calculate the grad norm here (no clipping or anything)
             grad_norm = get_grad_norm(net) # TODO: Can/should we evaluate every N steps instead?
+            grad_norm_list.append(grad_norm)
 
             per_step_diff_delta = target_per_step_decay - (previous_grad_norm - grad_norm)
             previous_grad_norm = grad_norm
@@ -673,6 +677,8 @@ def train(num_steps, attn_type, **kwargs):
                 avg_batch_times.append(average_time_per_batch)
                 # You can use this variable to print out the parameter counts of the network if you want, though we aren't printing this out in this particular version.
                 a100_mfu, _, param_counts = get_net_mfu_and_param_counts(net, current_batchsize, current_sequence_length, microbatches_since_last_eval/hyp['opt']['eval_iter'], avg_time_per_batch=average_time_per_batch)
+                a100_mfu_list.append(a100_mfu)
+                param_counts_list.append(param_counts)
                 microbatches_since_last_eval = 0 # necessary for accurate mfu counts. How totally necessary is mfu here if we're mainly using wallclock time?
                 is_final_eval = (crnt_steps == hyp['opt']['total_train_steps']) # If we're at the end of training, do a full eval instead
 
@@ -684,7 +690,16 @@ def train(num_steps, attn_type, **kwargs):
                 net.train() # Functionally shouldn't do anything with the base network, just adding this to guard against any bugs for any future changes that do require this <3 <3 <3
         microbatch_step += 1
 
-    return net, val_loss, train_losses, val_losses, train_accs, val_accs, avg_batch_times, tokens_seen_train, tokens_seen_val
+    return (
+        net, val_loss, 
+        train_losses, val_losses, 
+        train_accs, val_accs, 
+        avg_batch_times, 
+        tokens_seen_train, tokens_seen_val,
+        epochs_train, epochs_val,
+        param_counts_list, a100_mfu_list,
+        grad_norm_list,
+    )
 
 
 def filter_use_out_proj_vals(attn_type: str, use_out_proj: list[bool]) -> list[bool]:
@@ -899,6 +914,8 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     train_accs, val_accs, 
                     avg_batch_times,
                     tokens_seen_train, tokens_seen_val,
+                    param_counts_list, a100_mfu_list,
+                    grad_norm_list,
                 ) = train(num_steps=args.num_steps, attn_type=attn_type, **setting)
                 time_list.append(perf_counter() - t0)
                 val_loss_list.append(val_loss)
@@ -949,6 +966,18 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 },
                 **{
                     f"tokens_seen_val_{i+1}": str(tokens_seen_val[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"param_counts_{i+1}": str(param_counts_list[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"a100_mfu_{i+1}": str(a100_mfu_list[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"grad_norm_{i+1}": str(grad_norm_list[i])
                     for i in range(args.num_tries)
                 },
                 "seeds": str(seeds),
