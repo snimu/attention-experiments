@@ -8,3 +8,4 @@ tqdm
 datasets
 rich
 matplotlib
+scipy

@@ -11,6 +11,7 @@ import matplotlib.colors as mcolors
 import numpy as np 
 import torch
 import colorsys
+from scipy.stats import pearsonr
 
 
 def series_to_array(series: pl.Series) -> np.ndarray:
@@ -279,6 +280,77 @@ def plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
     plt.show()
 
 
+def plot_metric_variance(
+        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        attn_type: str = "vanilla",
+        to_plot: str = "val_loss",
+) -> None:
+    settings = get_unique_settings(
+        file, 
+        targets=["use_x_norm", "use_qkv_norm"], 
+        attn_type=attn_type
+    )
+    for (attn_type, use_x_norm, use_qkv_norm) in settings:
+        xs, ys, avg_y = load_xs_ys_avg_y(
+            file=file,
+            attn_type=attn_type,
+            use_x_norm=use_x_norm,
+            use_qkv_norm=use_qkv_norm,
+            logit_scalar="sqrt_dh",
+            to_plot=to_plot,
+        )
+        label = f"{attn_type}"
+        if use_x_norm:
+            label += " x-norm"
+        if use_qkv_norm:
+            label += " qkv-norm"
+        plt.plot(xs, np.std(ys, axis=0), label=label)
+    plt.xlabel("Steps")
+    plt.ylabel("Standard deviation")
+    plt.title(f"Standard deviation of {to_plot}")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+def print_loss_acc_correlation(
+        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        attn_type: str = "vanilla",
+        train: bool = False,
+) -> None:
+    settings = get_unique_settings(
+        file, 
+        targets=["use_x_norm", "use_qkv_norm"], 
+        attn_type=attn_type
+    )
+    for (attn_type, use_x_norm, use_qkv_norm) in settings:
+        _, _, avg_loss = load_xs_ys_avg_y(
+            file=file,
+            attn_type=attn_type,
+            use_x_norm=use_x_norm,
+            use_qkv_norm=use_qkv_norm,
+            logit_scalar="sqrt_dh",
+            to_plot=("train" if train else "val") + "_loss",
+        )
+        avg_loss = avg_loss.max() - avg_loss  # Invert loss to make it line up with accuracy
+        _, _, avg_acc = load_xs_ys_avg_y(
+            file=file,
+            attn_type=attn_type,
+            use_x_norm=use_x_norm,
+            use_qkv_norm=use_qkv_norm,
+            logit_scalar="sqrt_dh",
+            to_plot=("train" if train else "val") + "_acc",
+        )
+        correlation = pearsonr(avg_loss, avg_acc)[0]
+        label = f"{attn_type}"
+        if use_x_norm:
+            label += " x-norm"
+        if use_qkv_norm:
+            label += " qkv-norm"
+        print(f"{label}: {correlation:.4f}")
+
+
+
 def plot_loss_curves_avg_contrast_1500_steps(
         file: str = "../results/results_llm_1500_steps.csv",
         to_plot: str = "val_loss",
@@ -527,17 +599,19 @@ if __name__ == "__main__":
     #     to_plot="val_loss",
     # )
     # plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
-    to_plot = "val_acc"
+    to_plot = "val_loss"
     plot_llm_1000_steps_100_tries_by_norm_position(
         attn_type="vanilla", 
         to_plot=to_plot,
         show_all_plots=False,
     )
-    plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
-        attn_type="vanilla",
-        to_plot=to_plot,
-        show_all_plots=True,
-        use_x_norm=False,
-        use_qkv_norm=False,
-        logit_scalar="sqrt_dh",
-    )
+    # plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
+    #     attn_type="vanilla",
+    #     to_plot=to_plot,
+    #     show_all_plots=True,
+    #     use_x_norm=False,
+    #     use_qkv_norm=False,
+    #     logit_scalar="sqrt_dh",
+    # )
+    plot_metric_variance(to_plot=to_plot)
+    print_loss_acc_correlation(attn_type="vanilla", train="train" in to_plot)
