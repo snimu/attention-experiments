@@ -527,10 +527,16 @@ def eval(net):
 
     return val_acc, val_loss, val_perplexity
 
-def train(num_steps, attn_type, **kwargs):
+def train(
+        num_steps: int, 
+        num_epochs: int, 
+        num_tokens: int, 
+        attn_type: str, 
+        **kwargs
+):
     # Initializing variables for the whole run.
     time_secs = 0.
-    microbatch_step = crnt_steps = 0
+    microbatch_step = crnt_steps = crnt_epoch = 0
     microbatches_since_last_eval = 0. # TODO: Good way to simplify this?
     tokens_seen = 0
 
@@ -595,7 +601,12 @@ def train(num_steps, attn_type, **kwargs):
 
     # Step nearly infinitely, as our breaking condition is inside the loop now
     while crnt_steps < hyp['opt']['total_train_steps']:
+        crnt_epoch = tokens_seen//len(data['train'])
         if crnt_steps >= num_steps:
+            break
+        if crnt_epoch >= num_epochs:
+            break
+        if tokens_seen >= num_tokens:
             break
 
         # Limit the batchsize each step to keep GPU memory from exploding (TODO might be to consolidate this into the 'grow_sequence_length' function if that ends up being the only place that this variable is primarily relevant)
@@ -917,7 +928,13 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     epochs_train, epochs_val,
                     param_counts_list, a100_mfu_list,
                     grad_norm_list,
-                ) = train(num_steps=args.num_steps, attn_type=attn_type, **setting)
+                ) = train(
+                    num_steps=args.num_steps, 
+                    num_epochs=args.num_epochs,
+                    num_tokens=args.num_tokens,
+                    attn_type=attn_type, 
+                    **setting
+                )
                 time_list.append(perf_counter() - t0)
                 val_loss_list.append(val_loss)
                 val_losses_list.append(val_losses)
@@ -1029,6 +1046,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--append", action="store_true")
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
+    parser.add_argument("--num_epochs", type=int, default=100)  # unlimited epochs by default
+    parser.add_argument("--num_tokens", type=int, default=int(1e12))  # unlimited tokens by default
     parser.add_argument(
         "--attn_type", 
         type=str, 
