@@ -898,6 +898,14 @@ def train_and_eval(hyp, args: argparse.Namespace):
             train_accs_list = []
             time_list = []
             avg_batch_time_list = []
+            tokens_seen_train_list = []
+            tokens_seen_val_list = []
+            epochs_train_list = []
+            epochs_val_list = []
+            param_counts_list = []
+            a100_mfu_list = []
+            grad_norm_list = []
+
             seeds = []
             for idx in range(args.num_tries):
                 seed = args.seed+idx  # all the settings should be tried with the same random seeds in the same order
@@ -927,8 +935,8 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     avg_batch_times, 
                     tokens_seen_train, tokens_seen_val,
                     epochs_train, epochs_val,
-                    param_counts_list, a100_mfu_list,
-                    grad_norm_list,
+                    param_counts, a100_mfus,
+                    grad_norm_lists,
                 ) = train(
                     num_steps=args.num_steps, 
                     num_epochs=args.num_epochs,
@@ -943,6 +951,13 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 train_losses_list.append(train_losses)
                 train_accs_list.append(train_accs)
                 avg_batch_time_list.append(avg_batch_times)
+                tokens_seen_train_list.append(tokens_seen_train)
+                tokens_seen_val_list.append(tokens_seen_val)
+                epochs_train_list.append(epochs_train)
+                epochs_val_list.append(epochs_val)
+                param_counts_list.append(param_counts)
+                a100_mfu_list.append(a100_mfus)
+                grad_norm_list.append(grad_norm_lists)
 
             results = {
                 "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
