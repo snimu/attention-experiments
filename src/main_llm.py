@@ -601,13 +601,6 @@ def train(
 
     # Step nearly infinitely, as our breaking condition is inside the loop now
     while crnt_steps < hyp['opt']['total_train_steps']:
-        crnt_epoch = tokens_seen//len(data['train'])
-        if crnt_steps >= num_steps:
-            break
-        if crnt_epoch >= num_epochs:
-            break
-        if tokens_seen >= num_tokens:
-            break
 
         # Limit the batchsize each step to keep GPU memory from exploding (TODO might be to consolidate this into the 'grow_sequence_length' function if that ends up being the only place that this variable is primarily relevant)
         current_max_batchsize = round(batchsize * hyp['misc']['sequence_length']['max']/current_sequence_length)
@@ -669,7 +662,7 @@ def train(
             # Since we're not running over epochs anymore, we have to manually calculate what epoch it is.
             epoch = tokens_seen//len(data['train'])
 
-            if crnt_steps % hyp['opt']['eval_iter'] == 0:
+            if crnt_steps % hyp['opt']['eval_iter'] == 0 or crnt_epoch >= num_epochs or tokens_seen >= num_tokens:
                 tokens_seen_val.append(tokens_seen)
                 epochs_val.append(tokens_seen//len(data['train']))
                 ender.record()
@@ -700,6 +693,14 @@ def train(
                 starter.record()
                 net.train() # Functionally shouldn't do anything with the base network, just adding this to guard against any bugs for any future changes that do require this <3 <3 <3
         microbatch_step += 1
+
+        crnt_epoch = tokens_seen//len(data['train'])
+        if crnt_steps >= num_steps:
+            break
+        if crnt_epoch >= num_epochs:
+            break
+        if tokens_seen >= num_tokens:
+            break
 
     return (
         net, val_loss, 
