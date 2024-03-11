@@ -995,19 +995,19 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     for i in range(args.num_tries)
                 },
                 **{
-                    f"tokens_seen_train_{i+1}": str(tokens_seen_train[i])
+                    f"tokens_seen_train_{i+1}": str(tokens_seen_train_list[i])
                     for i in range(args.num_tries)
                 },
                 **{
-                    f"tokens_seen_val_{i+1}": str(tokens_seen_val[i])
+                    f"tokens_seen_val_{i+1}": str(tokens_seen_val_list[i])
                     for i in range(args.num_tries)
                 },
                 **{
-                    f"epochs_train_{i+1}": str(epochs_train[i])
+                    f"epochs_train_{i+1}": str(epochs_train_list[i])
                     for i in range(args.num_tries)
                 },
                 **{
-                    f"epochs_val_{i+1}": str(epochs_val[i])
+                    f"epochs_val_{i+1}": str(epochs_val_list[i])
                     for i in range(args.num_tries)
                 },
                 **{
