@@ -162,6 +162,7 @@ def get_unique_settings(
     attn_types = get_attn_types(file) if attn_type is None else [attn_type]
     settings = []
     for attn_type in attn_types:
+        # Load the unique combinations of the targets
         combinations = (
             pl.scan_csv(file)
             .filter(pl.col("attn_type") == attn_type)
@@ -169,6 +170,10 @@ def get_unique_settings(
             .collect()
             .unique()
         )
+        # Sort combinations alphabetically by content, target by target (for consistency in plotting)
+        for target in targets:
+            combinations = combinations.sort(target)
+        # Create a list of settings
         for features in zip(
                 *[combinations[target] for target in targets]
         ):
@@ -290,7 +295,8 @@ def plot_metric_variance(
         targets=["use_x_norm", "use_qkv_norm"], 
         attn_type=attn_type
     )
-    for (attn_type, use_x_norm, use_qkv_norm) in settings:
+    colors = generate_distinct_colors(len(settings))
+    for (attn_type, use_x_norm, use_qkv_norm), color in zip(settings, colors):
         xs, ys, avg_y = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
@@ -304,7 +310,7 @@ def plot_metric_variance(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
-        plt.plot(xs, np.std(ys, axis=0), label=label)
+        plt.plot(xs, np.std(ys, axis=0), label=label, color=color)
     plt.xlabel("Steps")
     plt.ylabel("Standard deviation")
     plt.title(f"Standard deviation of {to_plot}")
@@ -323,6 +329,8 @@ def print_loss_acc_correlation(
         targets=["use_x_norm", "use_qkv_norm"], 
         attn_type=attn_type
     )
+    print(f"Correlation between loss and accuracy for {attn_type}")
+    correlations = {}
     for (attn_type, use_x_norm, use_qkv_norm) in settings:
         _, _, avg_loss = load_xs_ys_avg_y(
             file=file,
@@ -347,7 +355,12 @@ def print_loss_acc_correlation(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
-        print(f"{label}: {correlation:.4f}")
+        correlations[label] = correlation
+
+    # Sort correlations by value
+    correlations = dict(sorted(correlations.items(), key=lambda item: item[1], reverse=True))
+    for label, correlation in correlations.items():
+        print(f"  - {label}: {correlation:.4f}")
 
 
 
@@ -599,8 +612,11 @@ if __name__ == "__main__":
     #     to_plot="val_loss",
     # )
     # plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
-    to_plot = "val_loss"
+    to_plot = "val_acc"
+    file_1000 = "../results/results_llm_1000_steps_100_tries_ForgotToTrackBatchAndNumTokens.csv"
+    file_1500 = "../results/results_llm_1500_steps_ForgotToTrackBatchAndNumTokens.csv"
     plot_llm_1000_steps_100_tries_by_norm_position(
+        file=file_1000,
         attn_type="vanilla", 
         to_plot=to_plot,
         show_all_plots=False,
@@ -613,5 +629,5 @@ if __name__ == "__main__":
     #     use_qkv_norm=False,
     #     logit_scalar="sqrt_dh",
     # )
-    plot_metric_variance(to_plot=to_plot)
-    print_loss_acc_correlation(attn_type="vanilla", train="train" in to_plot)
+    plot_metric_variance(file=file_1000, to_plot=to_plot)
+    print_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot)
