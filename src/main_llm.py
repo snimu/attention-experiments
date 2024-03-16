@@ -196,7 +196,7 @@ def create_layernorms(
         use_qkv_norm: bool, 
         qkv_factor: int = 3,
         use_qkv_weight: bool = False,
-) -> tuple[nn.Module, nn.Module]:
+) -> tuple[nn.Module, nn.Module, nn.Module]:
     x_norm = LayerNorm(
         residual_depth, 
         bias=False
@@ -207,16 +207,23 @@ def create_layernorms(
         bias=False, 
         weight=use_qkv_weight,
     ) if use_qkv_norm else nn.Identity()
-    return x_norm, qkv_norm
+
+    qk_norm = LayerNorm(
+        int(residual_depth*qkv_factor),
+        bias=False,
+        weight=False,
+    ) if use_qkv_norm else nn.Identity()
+    return x_norm, qk_norm, qkv_norm
 
 
 def create_attention(attn_type, **kwargs):  # kwargs for things that I actually want to vary across experiments
-    x_norm, qkv_norm = create_layernorms(
+    x_norm, qk_norm, qkv_norm = create_layernorms(
         kwargs['residual_depth'],
         use_x_norm=kwargs['use_x_norm'],
         use_qkv_norm=kwargs['use_qkv_norm'],
         qkv_factor=kwargs['qkv_factor'],
         use_qkv_weight=kwargs['use_qkv_weight'],
+        use_qk_norm=kwargs['use_qk_norm'],
     )
 
     if attn_type == "identity":
@@ -241,6 +248,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             num_heads=hyp['net']['num_heads'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
+            qk_norm=qk_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
             logit_scale_fn=kwargs['logit_scalar'],
@@ -250,6 +258,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
             feature_dim=kwargs['residual_depth'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
+            qk_norm=qk_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
             feature_map_qkv=kwargs['feature_map_qkv'],
@@ -801,6 +810,15 @@ def filter_use_qkv_norm(
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
+def filter_use_qk_norm(attn_type: str, use_qk_norm: list[bool]) -> list[bool]:
+    if attn_type in ["identity", "hlb-gpt", "torchMHA", "hercules", "zeus"]:
+        return [False]
+    elif attn_type in ["hydra", "vanilla"]:
+        return list(set(use_qk_norm))
+    
+    raise ValueError(f"Unrecognized attention type: {attn_type}")
+
+
 def get_qkv_factor(attn_type: str) -> int:
     if attn_type == "zeus":
         return 2
@@ -874,6 +892,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_x_norm": uxn,
                 "use_qkv_norm": uqkvn,
                 "use_qkv_weight": uqkvw,
+                "use_qk_norm": uqkn,
                 "qkv_factor": get_qkv_factor(attn_type),
                 "logit_scalar": get_logit_scalar(ls),
                 "residual_depth": rd,
@@ -886,6 +905,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for fm_attn in filter_feature_map_attn(attn_type, args.feature_map_attn)
             for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
             for uqkvn, uqkvw in filter_use_qkv_norm(attn_type, args.use_qkv_norm, args.use_qkv_weight)
+            for uqkn in filter_use_qk_norm(attn_type, args.use_qk_norm)
             for ls in filter_logit_scalar(attn_type, args.logit_scalar)
             for rd in filter_residual_depth(args.residual_depth)
         ]
@@ -969,6 +989,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_x_norm": setting.get("use_x_norm", False),
                 "use_qkv_norm": setting.get("use_qkv_norm", False),
                 "use_qkv_weight": setting.get("use_qkv_weight", False),
+                "use_qk_norm": setting.get("use_qk_norm", False),
                 "logit_scalar": name_logit_scalar(setting.get("logit_scalar", None)),
                 "residual_depth": setting.get("residual_depth", None),
                 "num_tries": args.num_tries,
@@ -1116,6 +1137,12 @@ def get_args() -> argparse.Namespace:
         nargs="+",
     )
     parser.add_argument(
+        "--add_qk_norm",
+        type=int,
+        default=0,
+        nargs="+",
+    )
+    parser.add_argument(
         "--logit_scalar",
         type=str,
         default=["sqrt_d"],
@@ -1142,6 +1169,8 @@ def get_args() -> argparse.Namespace:
     args.use_qkv_norm = [bool(uqkvn) for uqkvn in args.use_qkv_norm]
     args.use_qkv_weight = [args.use_qkv_weight] if isinstance(args.use_qkv_weight, int) else args.use_qkv_weight
     args.use_qkv_weight = [bool(uqkvw) for uqkvw in args.use_qkv_weight]
+    args.add_qk_norm = [args.add_qk_norm] if isinstance(args.add_qk_norm, int) else args.add_qk_norm
+    args.add_qk_norm = [bool(aqn) for aqn in args.add_qk_norm]
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
 

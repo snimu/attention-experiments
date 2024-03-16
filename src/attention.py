@@ -137,6 +137,7 @@ class VanillaCausal(nn.Module):
             num_heads: int,
             x_norm: nn.Module,
             qkv_norm: nn.Module,
+            qk_norm: nn.Module,
             device: DEVICE_TYPE = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
             logit_scale_fn: Callable[[int, int], float] = lambda d, h: math.sqrt(d / h),
@@ -155,6 +156,7 @@ class VanillaCausal(nn.Module):
 
         self.x_norm = x_norm
         self.qkv_norm = qkv_norm
+        self.qk_norm = qk_norm
         self.seq_len = 32  # initial sequence length from training --- updated in forward
         self.mask = self.update_mask(self.seq_len)
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -190,6 +192,7 @@ class VanillaCausal(nn.Module):
         sin_rot = sin_rot.transpose(0, 1)  # (seq_len, heads, dim_per_head) -> (heads, seq_len, dim_per_head)
 
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
+        Q, K  = self.qk_norm(Q), self.qk_norm(K)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / self.logit_scale
@@ -349,6 +352,7 @@ class HydraCausal(nn.Module):
             feature_dim: int, 
             x_norm: nn.Module,
             qkv_norm: nn.Module,
+            qk_norm: nn.Module,
             feature_map_qkv: Callable[[torch.Tensor], torch.Tensor] = cos_sim,
             feature_map_attn: Callable[[torch.Tensor], torch.Tensor] = identity,
             use_out_proj: bool = True,
@@ -361,6 +365,7 @@ class HydraCausal(nn.Module):
         self.feature_map_attn = feature_map_attn
         self.x_norm = x_norm
         self.qkv_norm = qkv_norm
+        self.qk_norm = qk_norm
         self.device = device
         self.dtype = dtype
         self.in_proj = nn.Linear(feature_dim, int(feature_dim * 3), bias=False, device=device, dtype=dtype)
@@ -371,6 +376,7 @@ class HydraCausal(nn.Module):
         cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
+        Q, K = self.qk_norm(Q), self.qk_norm(K)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         Y = self.out_proj(Y)
