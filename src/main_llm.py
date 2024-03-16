@@ -879,6 +879,10 @@ def get_printable_setting(setting: dict) -> str:
     )
 
 
+def to_dict_of_str_encoded_list(name: str, item: list, nums: int) -> dict[str, str]:
+    return {f"{name}_{i+1}": str(item[i]) for i in range(nums)}
+
+
 def train_and_eval(hyp, args: argparse.Namespace):
     if not args.save:
         rich.print("\n\nWARNING: Not saving results to disk.\n\n")
@@ -999,58 +1003,19 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
-                **{
-                    f"val_losses_{i+1}": str(val_losses_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"val_accs_{i+1}": str(val_accs_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"train_losses_{i+1}": str(train_losses_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"train_accs_{i+1}": str(train_accs_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"val_pplxs_{i+1}": str(val_pplxs_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"avg_batch_times_{i+1}": str(avg_batch_time_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"tokens_seen_train_{i+1}": str(tokens_seen_train_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"tokens_seen_val_{i+1}": str(tokens_seen_val_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"epochs_train_{i+1}": str(epochs_train_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"epochs_val_{i+1}": str(epochs_val_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"param_counts_{i+1}": str(param_counts_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"a100_mfu_{i+1}": str(a100_mfu_list[i])
-                    for i in range(args.num_tries)
-                },
-                **{
-                    f"grad_norm_{i+1}": str(grad_norm_list[i])
-                    for i in range(args.num_tries)
-                },
+                **to_dict_of_str_encoded_list("val_losses", val_losses_list, args.num_tries),
+                **to_dict_of_str_encoded_list("val_accs", val_accs_list, args.num_tries),
+                **to_dict_of_str_encoded_list("train_losses", train_losses_list, args.num_tries),
+                **to_dict_of_str_encoded_list("train_accs", train_accs_list, args.num_tries),
+                **to_dict_of_str_encoded_list("val_pplxs", val_pplxs_list, args.num_tries),
+                **to_dict_of_str_encoded_list("avg_batch_times", avg_batch_time_list, args.num_tries),
+                **to_dict_of_str_encoded_list("tokens_seen_train", tokens_seen_train_list, args.num_tries),
+                **to_dict_of_str_encoded_list("tokens_seen_val", tokens_seen_val_list, args.num_tries),
+                **to_dict_of_str_encoded_list("epochs_train", epochs_train_list, args.num_tries),
+                **to_dict_of_str_encoded_list("epochs_val", epochs_val_list, args.num_tries),
+                **to_dict_of_str_encoded_list("param_counts", param_counts_list, args.num_tries),
+                **to_dict_of_str_encoded_list("a100_mfu", a100_mfu_list, args.num_tries),
+                **to_dict_of_str_encoded_list("grad_norm", grad_norm_list, args.num_tries),
                 "seeds": str(seeds),
             }
             df = pl.DataFrame(results)
