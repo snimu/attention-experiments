@@ -597,6 +597,7 @@ def train(
     val_losses = []
     train_accs = []
     val_accs = []
+    val_pplxs = []
     avg_batch_times = []
     tokens_seen_train = []
     tokens_seen_val = []
@@ -686,6 +687,7 @@ def train(
                 val_acc, val_loss, val_pplx = eval(net)
                 val_accs.append(val_acc)
                 val_losses.append(val_loss)
+                val_pplxs.append(val_pplx)
                 average_time_per_batch = 1e-3 * starter.elapsed_time(ender)/hyp['opt']['eval_iter']
                 avg_batch_times.append(average_time_per_batch)
                 # You can use this variable to print out the parameter counts of the network if you want, though we aren't printing this out in this particular version.
@@ -715,7 +717,7 @@ def train(
         net, val_loss, 
         train_losses, val_losses, 
         train_accs, val_accs, 
-        avg_batch_times, 
+        val_pplxs, avg_batch_times, 
         tokens_seen_train, tokens_seen_val,
         epochs_train, epochs_val,
         param_counts_list, a100_mfu_list,
@@ -916,6 +918,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             val_accs_list = []
             train_losses_list = []
             train_accs_list = []
+            val_pplxs_list = []
             time_list = []
             avg_batch_time_list = []
             tokens_seen_train_list = []
@@ -952,7 +955,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                     _, val_loss, 
                     train_losses, val_losses, 
                     train_accs, val_accs, 
-                    avg_batch_times, 
+                    val_pplxs, avg_batch_times, 
                     tokens_seen_train, tokens_seen_val,
                     epochs_train, epochs_val,
                     param_counts, a100_mfus,
@@ -970,6 +973,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 val_accs_list.append(val_accs)
                 train_losses_list.append(train_losses)
                 train_accs_list.append(train_accs)
+                val_pplxs_list.append(val_pplxs)
                 avg_batch_time_list.append(avg_batch_times)
                 tokens_seen_train_list.append(tokens_seen_train)
                 tokens_seen_val_list.append(tokens_seen_val)
@@ -1009,6 +1013,10 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 },
                 **{
                     f"train_accs_{i+1}": str(train_accs_list[i])
+                    for i in range(args.num_tries)
+                },
+                **{
+                    f"val_pplxs_{i+1}": str(val_pplxs_list[i])
                     for i in range(args.num_tries)
                 },
                 **{
