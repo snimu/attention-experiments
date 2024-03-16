@@ -1110,7 +1110,7 @@ def get_args() -> argparse.Namespace:
         nargs="+",
     )
     parser.add_argument(
-        "--add_qk_norm",
+        "--use_qk_norm",
         type=int,
         default=0,
         nargs="+",
@@ -1142,8 +1142,8 @@ def get_args() -> argparse.Namespace:
     args.use_qkv_norm = [bool(uqkvn) for uqkvn in args.use_qkv_norm]
     args.use_qkv_weight = [args.use_qkv_weight] if isinstance(args.use_qkv_weight, int) else args.use_qkv_weight
     args.use_qkv_weight = [bool(uqkvw) for uqkvw in args.use_qkv_weight]
-    args.add_qk_norm = [args.add_qk_norm] if isinstance(args.add_qk_norm, int) else args.add_qk_norm
-    args.add_qk_norm = [bool(aqn) for aqn in args.add_qk_norm]
+    args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.add_use_qk_normqk_norm
+    args.use_qk_norm = [bool(aqn) for aqn in args.use_qk_norm]
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
 
