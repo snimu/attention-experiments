@@ -42,11 +42,11 @@ def load_xs_ys_avg_y(
     """Load x, y, and average y from a CSV file."""
     assert to_plot in ("train_loss", "train_acc", "val_loss", "val_acc"), f"Invalid to_plot: {to_plot}"
 
-    filters = pl.col("attn_type") == attn_type
+    filters = (pl.col("attn_type") == attn_type)
     if feature_map_qkv is not None:
-        filters &= pl.col("feature_map_qkv") == feature_map_qkv
+        filters &= (pl.col("feature_map_qkv") == feature_map_qkv)
     if feature_map_attn is not None:
-        filters &= pl.col("feature_map_attn") == feature_map_attn
+        filters &= (pl.col("feature_map_attn") == feature_map_attn)
     if use_out_proj is not None:
         filters &= (pl.col("use_out_proj") == use_out_proj)
     if identity_weight is not None:
@@ -232,6 +232,7 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
         show_all_plots: bool = False,
         from_step: int = 0,
         save: bool = False,
+        logit_scalar: str = "sqrt_dh",
 ) -> None:
     settings = get_unique_settings(
         file, 
@@ -245,7 +246,7 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
             attn_type=attn_type,
             use_x_norm=use_x_norm,
             use_qkv_norm=use_qkv_norm,
-            logit_scalar="sqrt_dh",
+            logit_scalar=logit_scalar,
             to_plot=to_plot,
         )
         label = f"{attn_type}"
@@ -628,18 +629,22 @@ def find_best_attn_setting_diffusion(file: str) -> None:
 if __name__ == "__main__":
     to_plot_list = ["train_loss", "train_acc", "val_loss", "val_acc"]
     from_step_list = [0, 800]
-    save = True
+    attn_types_list = ["vanilla", "hydra"]
+    save = False
     file_1000 = "../results/results_llm_1000_steps_100_tries_ForgotToTrackBatchAndNumTokens.csv"
     file_1500 = "../results/results_llm_1500_steps_ForgotToTrackBatchAndNumTokens.csv"
 
-    for to_plot, from_step in itertools.product(to_plot_list, from_step_list):
+    for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
+        print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
         plot_llm_1000_steps_100_tries_by_norm_position(
             file=file_1000,
-            attn_type="vanilla", 
+            attn_type=attn_type, 
             to_plot=to_plot,
             show_all_plots=False,
             from_step=from_step,
             save=save,
+            logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
         )
+        print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
         plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
         # print_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot)
