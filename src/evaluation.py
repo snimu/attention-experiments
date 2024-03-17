@@ -4,6 +4,7 @@ import ast
 import copy
 import itertools
 import math
+import os
 
 import polars as pl
 import matplotlib.pyplot as plt
@@ -12,6 +13,12 @@ import numpy as np
 import torch
 import colorsys
 from scipy.stats import pearsonr
+
+
+def close_plt() -> None:
+    plt.cla()
+    plt.clf()
+    plt.close()
 
 
 def series_to_array(series: pl.Series) -> np.ndarray:
@@ -33,7 +40,7 @@ def load_xs_ys_avg_y(
         to_plot: str = "val_loss",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load x, y, and average y from a CSV file."""
-    assert to_plot in ("train_loss", "val_loss", "val_acc")
+    assert to_plot in ("train_loss", "train_acc", "val_loss", "val_acc"), f"Invalid to_plot: {to_plot}"
 
     filters = pl.col("attn_type") == attn_type
     if feature_map_qkv is not None:
@@ -62,7 +69,7 @@ def load_xs_ys_avg_y(
     num_datapoints = len(ys[0])
 
     if "train" in to_plot:
-        xs = (np.arange(num_datapoints) + 1) * 10
+        xs = ((np.arange(num_datapoints) + 1) * 12.5).astype(int)
     elif "val" in to_plot:
         xs = (np.arange(num_datapoints) + 1) * 50
 
@@ -223,6 +230,8 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
         to_plot: str = "val_loss",
         attn_type: str | None  = "vanilla",
         show_all_plots: bool = False,
+        from_step: int = 0,
+        save: bool = False,
 ) -> None:
     settings = get_unique_settings(
         file, 
@@ -244,17 +253,28 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
+        mask = xs >= from_step
         if show_all_plots:
             for y in ys:
-                plt.plot(xs, y, color, alpha=0.3/math.sqrt(len(ys)))
-        plt.plot(xs, avg_y, color=color, label=label, linewidth=2)
+                plt.plot(xs[mask], y[mask], color, alpha=0.3/math.sqrt(len(ys)))
+        plt.plot(xs[mask], avg_y[mask], color=color, label=label, linewidth=2)
 
     plt.xlabel("Steps")
-    plt.ylabel("Loss")
+    plt.ylabel("Loss" if "loss" in to_plot else "Accuracy")
     plt.title(f"Average {to_plot}")
     plt.legend()
+    fig = plt.gcf()
+    fig.set_size_inches(13, 7)
+    plt.tight_layout()
     plt.grid()
-    plt.show()
+
+    if save:
+        name = f"{to_plot}_{attn_type}_" + file.split("/")[-1].split(".")[0] + "_from_step_" + str(from_step)
+        os.makedirs("../results/plots", exist_ok=True)
+        plt.savefig(f"../results/plots/{name}.png", dpi=300, bbox_inches="tight")
+    else:
+        plt.show()
+    close_plt()
 
 
 def plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
@@ -289,6 +309,8 @@ def plot_metric_variance(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         attn_type: str = "vanilla",
         to_plot: str = "val_loss",
+        from_step: int = 0,
+        save: bool = False,
 ) -> None:
     settings = get_unique_settings(
         file, 
@@ -310,13 +332,26 @@ def plot_metric_variance(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
-        plt.plot(xs, np.std(ys, axis=0), label=label, color=color)
+        plt.plot(xs[xs >= from_step], np.std(ys, axis=0)[xs >= from_step], label=label, color=color)
     plt.xlabel("Steps")
     plt.ylabel("Standard deviation")
     plt.title(f"Standard deviation of {to_plot}")
+
     plt.legend()
+    
+    fig = plt.gcf()
+    fig.set_size_inches(13, 7)
+    plt.tight_layout()
     plt.grid()
-    plt.show()
+
+    if save:
+        name = f"std_dev_{to_plot}_{attn_type}_" + file.split("/")[-1].split(".")[0] + "_from_step_" + str(from_step)
+        os.makedirs("../results/plots", exist_ok=True)
+        plt.savefig(f"../results/plots/{name}.png", dpi=300, bbox_inches="tight")
+    else:
+        plt.show()
+
+    close_plt()
 
 
 def print_loss_acc_correlation(
@@ -591,43 +626,20 @@ def find_best_attn_setting_diffusion(file: str) -> None:
     
 
 if __name__ == "__main__":
-    # plot_loss_curves_diffusion(
-    #     file="../results/results_diffusion_20_epochs.csv",
-    #     in_attns=["identity", "linear", "hydra", "hercules", "zeus"],
-    #     mid_attns=["identity", "linear", "hydra", "hercules", "zeus"],
-    #     out_attns=["identity", "linear", "hydra", "hercules", "zeus"],
-    #     to_plot="losses",
-    #     from_step=0,
-    # )
-    # plot_loss_curves_feature_maps("hydra")
-    # plot_loss_curves_diffusion_single_attn(
-    #     file="../results/results_diffusion_20_epochs.csv",
-    #     attn_type="hydra",
-    #     to_plot="losses",
-    #     show_all_trials=True,
-    #     from_step=0,
-    # )
-    # plot_loss_curves_avg_contrast_1500_steps(
-    #     file="../results/results_llm_hydra_feature_maps.csv",
-    #     to_plot="val_loss",
-    # )
-    # plot_llm_1500_steps_by_norm_position(attn_type="vanilla", to_plot="val_acc")
-    to_plot = "val_acc"
+    to_plot_list = ["train_loss", "train_acc", "val_loss", "val_acc"]
+    from_step_list = [0, 800]
+    save = True
     file_1000 = "../results/results_llm_1000_steps_100_tries_ForgotToTrackBatchAndNumTokens.csv"
     file_1500 = "../results/results_llm_1500_steps_ForgotToTrackBatchAndNumTokens.csv"
-    plot_llm_1000_steps_100_tries_by_norm_position(
-        file=file_1000,
-        attn_type="vanilla", 
-        to_plot=to_plot,
-        show_all_plots=False,
-    )
-    # plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
-    #     attn_type="vanilla",
-    #     to_plot=to_plot,
-    #     show_all_plots=True,
-    #     use_x_norm=False,
-    #     use_qkv_norm=False,
-    #     logit_scalar="sqrt_dh",
-    # )
-    plot_metric_variance(file=file_1000, to_plot=to_plot)
-    print_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot)
+
+    for to_plot, from_step in itertools.product(to_plot_list, from_step_list):
+        plot_llm_1000_steps_100_tries_by_norm_position(
+            file=file_1000,
+            attn_type="vanilla", 
+            to_plot=to_plot,
+            show_all_plots=False,
+            from_step=from_step,
+            save=save,
+        )
+        plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
+        # print_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot)
