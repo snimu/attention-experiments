@@ -355,20 +355,23 @@ def plot_metric_variance(
     close_plt()
 
 
-def print_loss_acc_correlation(
+def get_loss_acc_correlation(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         attn_type: str = "vanilla",
         train: bool = False,
-) -> None:
+        from_step: int = 0,
+        verbose: bool = True,
+) -> dict[str, float]:
     settings = get_unique_settings(
         file, 
         targets=["use_x_norm", "use_qkv_norm"], 
         attn_type=attn_type
     )
-    print(f"Correlation between loss and accuracy for {attn_type}")
+    if verbose:
+        print(f"Correlation between loss and accuracy for {attn_type}")
     correlations = {}
     for (attn_type, use_x_norm, use_qkv_norm) in settings:
-        _, _, avg_loss = load_xs_ys_avg_y(
+        xsl, _, avg_loss = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             use_x_norm=use_x_norm,
@@ -376,8 +379,7 @@ def print_loss_acc_correlation(
             logit_scalar="sqrt_dh",
             to_plot=("train" if train else "val") + "_loss",
         )
-        avg_loss = avg_loss.max() - avg_loss  # Invert loss to make it line up with accuracy
-        _, _, avg_acc = load_xs_ys_avg_y(
+        xsa, _, avg_acc = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             use_x_norm=use_x_norm,
@@ -385,6 +387,12 @@ def print_loss_acc_correlation(
             logit_scalar="sqrt_dh",
             to_plot=("train" if train else "val") + "_acc",
         )
+        assert (xsl == xsa).all()
+        mask = xsl >= from_step
+        avg_loss = avg_loss.max() - avg_loss  # Invert loss to make it line up with accuracy
+        avg_loss = avg_loss[mask]
+        avg_acc = avg_acc[mask]
+
         correlation = pearsonr(avg_loss, avg_acc)[0]
         label = f"{attn_type}"
         if use_x_norm:
@@ -395,9 +403,71 @@ def print_loss_acc_correlation(
 
     # Sort correlations by value
     correlations = dict(sorted(correlations.items(), key=lambda item: item[1], reverse=True))
-    for label, correlation in correlations.items():
-        print(f"  - {label}: {correlation:.4f}")
+    if verbose:
+        for label, correlation in correlations.items():
+            print(f"- {correlation:.4f} ({label})")
+    
+    return correlations
 
+
+def plot_correlations(
+        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        attn_type: str = "vanilla",
+        from_step_list: list[int] | None = None,
+) -> None:
+    if from_step_list is None:
+        from_step_list = [0, 800]
+
+    results = {}
+
+    for train in (True, False):
+        for from_step in from_step_list:
+            correlations = get_loss_acc_correlation(
+                file=file,
+                attn_type=attn_type,
+                train=train,
+                from_step=from_step,
+                verbose=False,
+            )
+            for label, correlation in correlations.items():
+                if label not in results:
+                    results[label] = {"train": [train], "from_step": [from_step], "correlation": [correlation]}
+                else:
+                    results[label]["train"].append(train)
+                    results[label]["from_step"].append(from_step)
+                    results[label]["correlation"].append(correlation)
+
+    # Make and print a table from this - each column is a 'label' and each row is a 'train' and 'from_step' combination
+    # The table is then sorted by the correlation values
+    table1 = []
+    table2 = []
+    for label, data in results.items():
+        for train, from_step, correlation in zip(data["train"], data["from_step"], data["correlation"]):
+            if train:
+                table1.append([label, train, from_step, round(correlation, 4)])
+            else:
+                table2.append([label, train, from_step, round(correlation, 4)])
+
+    def print_table(table):
+        table = sorted(table, key=lambda x: x[3], reverse=True)
+        print("Correlation table:")
+        columns = ["attn_type", "train", "from_step", "correlation"]
+        column_widths = [max(max(len(str(row[i])) for row in table), len(columns[i])) for i in range(len(columns))]
+
+        column_str = "| "
+        for i, column in enumerate(columns):
+            column_str += column.ljust(column_widths[i]) + " | "
+        print(column_str)
+        print(f"|{'---|' * len(columns)}")
+        for row in table:
+            print("| ", end="")
+            for i, value in enumerate(row):
+                print(str(value).ljust(column_widths[i]), end=" | ")
+            print()
+
+    print_table(table1)
+    print()
+    print_table(table2)
 
 
 def plot_loss_curves_avg_contrast_1500_steps(
@@ -634,17 +704,20 @@ if __name__ == "__main__":
     file_1000 = "../results/results_llm_1000_steps_100_tries_ForgotToTrackBatchAndNumTokens.csv"
     file_1500 = "../results/results_llm_1500_steps_ForgotToTrackBatchAndNumTokens.csv"
 
-    for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
-        print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
-        plot_llm_1000_steps_100_tries_by_norm_position(
-            file=file_1000,
-            attn_type=attn_type, 
-            to_plot=to_plot,
-            show_all_plots=False,
-            from_step=from_step,
-            save=save,
-            logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
-        )
-        print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
-        plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
-        # print_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot)
+    # for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
+    #     print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
+    #     plot_llm_1000_steps_100_tries_by_norm_position(
+    #         file=file_1000,
+    #         attn_type=attn_type, 
+    #         to_plot=to_plot,
+    #         show_all_plots=False,
+    #         from_step=from_step,
+    #         save=save,
+    #         logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
+    #     )
+    #     print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
+    #     plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
+    # for to_plot in ("val_loss", "train_loss"):
+    #     print(f"Plotting {to_plot} for vanilla from step 0")
+    #     get_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot, from_step=800)
+    plot_correlations(file=file_1000, attn_type="vanilla", from_step_list=[0, 800])
