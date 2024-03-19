@@ -278,6 +278,78 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
     close_plt()
 
 
+def plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
+        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        to_plot_set: list[str] | str = "val_loss",
+        attn_type: str | None  = "vanilla",
+        show_all_plots: bool = False,
+        from_step_set: list[str] | int = 0,
+        save: bool = False,
+        logit_scalar: str = "sqrt_dh",
+) -> None:
+    if isinstance(to_plot_set, str):
+        to_plot_set = [to_plot_set]
+    if isinstance(from_step_set, int):
+        from_step_set = [from_step_set]
+
+    num_plots = int(len(to_plot_set) * len(from_step_set))
+    nrows = len(to_plot_set)
+    ncols = math.ceil(num_plots / nrows)
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols)
+
+    row = col = 0
+    for i, (to_plot, from_step) in enumerate(itertools.product(to_plot_set, from_step_set)):
+        settings = get_unique_settings(
+            file, 
+            targets=["use_x_norm", "use_qkv_norm"], 
+            attn_type=attn_type
+        )
+        colors = generate_distinct_colors(len(settings))
+        for (attn_type, use_x_norm, use_qkv_norm), color in zip(settings, colors, strict=True):
+            xs, ys, avg_y = load_xs_ys_avg_y(
+                file=file,
+                attn_type=attn_type,
+                use_x_norm=use_x_norm,
+                use_qkv_norm=use_qkv_norm,
+                logit_scalar=logit_scalar,
+                to_plot=to_plot,
+            )
+            label = f"{attn_type}"
+            if use_x_norm:
+                label += " x-norm"
+            if use_qkv_norm:
+                label += " qkv-norm"
+            mask = xs >= from_step
+            if show_all_plots:
+                for y in ys:
+                    axs[row, col].plot(xs[mask], y[mask], color, alpha=0.3/math.sqrt(len(ys)))
+            axs[row, col].plot(xs[mask], avg_y[mask], color=color, label=label, linewidth=2)
+
+        if row == nrows - 1:
+            axs[row, col].set_xlabel("Steps")
+        axs[row, col].set_ylabel(to_plot)
+        axs[row, col].grid()
+
+        to_next_row = ((i != 0) or (ncols == 1)) and ((i+1) % ncols == 0)
+        if to_next_row:
+            row += 1
+            col = 0
+        else:
+            col += 1
+
+    fig.set_size_inches(13, 9)
+    axs[0, 0].legend()#ncol=2, loc='lower center', bbox_to_anchor=(0.5, -1.0))
+    plt.tight_layout()
+
+    if save:
+        name = f"multiplot_{'_'.join(to_plot_set)}_{attn_type}_" + file.split("/")[-1].split(".")[0] + f"_from_step_{'_'.join(str(from_step) for from_step in from_step_set)}"
+        os.makedirs("../results/plots", exist_ok=True)
+        plt.savefig(f"../results/plots/{name}.png", dpi=300, bbox_inches="tight")
+    else:
+        plt.show()
+    close_plt()
+
+
 def plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         attn_type: str = "vanilla",
@@ -700,9 +772,19 @@ if __name__ == "__main__":
     to_plot_list = ["train_loss", "train_acc", "val_loss", "val_acc"]
     from_step_list = [0, 800]
     attn_types_list = ["vanilla", "hydra"]
-    save = False
+    save = True
     file_1000 = "../results/results_llm_1000_steps_100_tries_ForgotToTrackBatchAndNumTokens.csv"
     file_1500 = "../results/results_llm_1500_steps_ForgotToTrackBatchAndNumTokens.csv"
+
+    plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
+        file=file_1000,
+        to_plot_set=["train_loss", "val_loss", "train_acc", "val_acc"],
+        attn_type="vanilla",
+        show_all_plots=False,
+        from_step_set=[0, 800],
+        save=save,
+        logit_scalar="sqrt_dh",
+    )
 
     # for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
     #     print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
