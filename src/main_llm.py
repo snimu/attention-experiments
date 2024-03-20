@@ -353,8 +353,8 @@ def make_net(attn_type: str, **kwargs):
     network_dict = nn.ModuleDict({
         'embedding': nn.Embedding(hyp['misc']['num_tokens'], kwargs['residual_depth'], scale_grad_by_freq=True),
         'norm': LayerNorm(kwargs['residual_depth'], bias=False),
-        'mlp_layers': nn.ModuleList([MLPBlock(kwargs['residual_depth']) for _ in range(hyp['net']['num_blocks'])]),
-        'attn_layers': nn.ModuleList([create_attention(attn_type, **kwargs) for _ in range(hyp['net']['num_blocks'])]),
+        'mlp_layers': nn.ModuleList([MLPBlock(kwargs['residual_depth']) for _ in range(kwargs['num_layers'])]),
+        'attn_layers': nn.ModuleList([create_attention(attn_type, **kwargs) for _ in range(kwargs['num_layers'])]),
         'outputs': nn.Linear(kwargs['residual_depth'], hyp['misc']['num_tokens'], bias=False),
     })
 
@@ -850,6 +850,10 @@ def filter_residual_depth(residual_depth: list[int]) -> list[int]:
     return [i for i in list(set(residual_depth)) if (i > 0) and (i % 3 == 0) and (i % 8 == 0)]
 
 
+def filter_num_layers(num_layers: list[int]) -> list[int]:
+    return [i for i in list(set(num_layers)) if i > 0]
+
+
 def name_logit_scalar(logic_scalar: Callable[[int, int], float]):
     d, h = 16, 4
     result = logic_scalar(d, h)
@@ -902,6 +906,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "qkv_factor": get_qkv_factor(attn_type),
                 "logit_scalar": get_logit_scalar(ls),
                 "residual_depth": rd,
+                "num_layers": nl
             }
             # The functions below pick the correct default values for each attention type
             # even if the wrong ones were given in the command line.
@@ -914,6 +919,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for uqkn in filter_use_qk_norm(attn_type, args.use_qk_norm)
             for ls in filter_logit_scalar(attn_type, args.logit_scalar)
             for rd in filter_residual_depth(args.residual_depth)
+            for nl in filter_num_layers(args.num_layers)
         ]
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
@@ -1128,6 +1134,12 @@ def get_args() -> argparse.Namespace:
         default=hyp["net"]["residual_depth"],
         nargs="+",
     )
+    parser.add_argument(
+        "--num_layers", 
+        type=int, 
+        default=hyp["net"]["num_blocks"],
+        nargs="+",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -1146,6 +1158,7 @@ def get_args() -> argparse.Namespace:
     args.use_qk_norm = [bool(aqn) for aqn in args.use_qk_norm]
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
+    args.num_layers = [args.num_layers] if isinstance(args.num_layers, int) else args.num_layers
 
     rich.print(args.__dict__)
     return args
