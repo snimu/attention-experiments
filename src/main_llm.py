@@ -210,7 +210,7 @@ def create_layernorms(
     ) if use_qkv_norm else nn.Identity()
 
     qk_norm = LayerNorm(
-        int(residual_depth*qkv_factor),
+        int(residual_depth),
         bias=False,
         weight=False,
     ) if use_qk_norm else nn.Identity()
