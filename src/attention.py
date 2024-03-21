@@ -178,6 +178,7 @@ class VanillaCausal(nn.Module):
 
         cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
+        Q, K  = self.qk_norm(Q), self.qk_norm(K)
 
         Q = Q.view(batch_size, seq_len, self.num_heads, self.dim_per_head)
         K = K.view(batch_size, seq_len, self.num_heads, self.dim_per_head)
@@ -192,7 +193,6 @@ class VanillaCausal(nn.Module):
         sin_rot = sin_rot.transpose(0, 1)  # (seq_len, heads, dim_per_head) -> (heads, seq_len, dim_per_head)
 
         Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
-        Q, K  = self.qk_norm(Q), self.qk_norm(K)
 
         # (batch, heads, seq_len, dim_per_head)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / self.logit_scale
@@ -375,8 +375,8 @@ class HydraCausal(nn.Module):
     def forward(self, X: torch.Tensor):
         cos_rot, sin_rot = self.rot_emb(X)
         Q, K, V = self.qkv_norm(self.in_proj(self.x_norm(X))).chunk(3, dim=-1)
-        Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         Q, K = self.qk_norm(Q), self.qk_norm(K)
+        Q, K = embeddings.apply_rotary_pos_emb(Q, K, cos_rot, sin_rot)
         A = torch.cumsum(self.feature_map_qkv(K) * V, dim=-2)  # cumsum means causal
         Y = self.feature_map_attn(A) * self.feature_map_qkv(Q)
         Y = self.out_proj(Y)
