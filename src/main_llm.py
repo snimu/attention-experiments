@@ -196,6 +196,7 @@ def create_layernorms(
         use_qkv_norm: bool, 
         qkv_factor: int = 3,
         use_qkv_weight: bool = False,
+        use_qk_norm: bool = False,
 ) -> tuple[nn.Module, nn.Module, nn.Module]:
     x_norm = LayerNorm(
         residual_depth, 
@@ -212,7 +213,7 @@ def create_layernorms(
         int(residual_depth*qkv_factor),
         bias=False,
         weight=False,
-    ) if use_qkv_norm else nn.Identity()
+    ) if use_qk_norm else nn.Identity()
     return x_norm, qk_norm, qkv_norm
 
 
