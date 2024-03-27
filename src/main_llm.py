@@ -1028,10 +1028,10 @@ def train_and_eval(hyp, args: argparse.Namespace):
             df = pl.DataFrame(results)
 
             if args.save:
-                if not os.path.exists('results_llm.csv') or (not args.append and attn_num == setting_num == 0):
+                if not os.path.exists(args.savefile) or (not args.append and attn_num == setting_num == 0):
                     df.write_csv('results_llm.csv')
                 else:
-                    with open('results_llm.csv', 'ab') as f:
+                    with open(args.savefile, 'ab') as f:
                         df.write_csv(f, include_header=False)
 
             done_header = (
@@ -1061,6 +1061,7 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--save", action="store_true")
     parser.add_argument("--append", action="store_true")
+    parser.add_argument("--savefile", type=str, default="results_llm.csv")
     parser.add_argument("--num_tries", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=500)
     parser.add_argument("--num_epochs", type=int, default=100)  # unlimited epochs by default
@@ -1160,6 +1161,10 @@ def get_args() -> argparse.Namespace:
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
     args.num_layers = [args.num_layers] if isinstance(args.num_layers, int) else args.num_layers
+
+    if args.append:
+        if not os.path.exists(args.savefile):
+            raise FileNotFoundError(f"File {args.savefile} does not exist. Cannot append to it.")
 
     rich.print(args.__dict__)
     return args
