@@ -704,15 +704,15 @@ def train(
                 torch.cuda.synchronize()
                 starter.record()
                 net.train() # Functionally shouldn't do anything with the base network, just adding this to guard against any bugs for any future changes that do require this <3 <3 <3
-        microbatch_step += 1
 
-        crnt_epoch = tokens_seen//len(data['train'])
-        if crnt_steps >= num_steps:
-            break
-        if crnt_epoch >= num_epochs:
-            break
-        if tokens_seen >= num_tokens:
-            break
+                crnt_epoch = tokens_seen//len(data['train'])
+                if crnt_steps >= num_steps:
+                    break
+                if crnt_epoch >= num_epochs:
+                    break
+                if tokens_seen >= num_tokens:
+                    break
+        microbatch_step += 1
 
     return (
         net, val_loss, 
