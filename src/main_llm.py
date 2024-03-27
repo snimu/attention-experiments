@@ -1125,7 +1125,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--logit_scalar",
         type=str,
-        default=["sqrt_d"],
+        default=["sqrt_dh"],
         choices=["d", "sqrt_d", "sqrt_dh"],
         nargs="+",
     )
