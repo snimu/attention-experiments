@@ -1029,7 +1029,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
 
             if args.save:
                 if not os.path.exists(args.savefile) or (not args.append and attn_num == setting_num == 0):
-                    df.write_csv('results_llm.csv')
+                    df.write_csv(args.savefile)
                 else:
                     with open(args.savefile, 'ab') as f:
                         df.write_csv(f, include_header=False)
