@@ -123,7 +123,7 @@ def load_tokens_ys_avg_ys(
 
 
 def interpolate_linearly(
-        xs: list[np.ndarray], ys: list[np.ndarray], num_samples: int = 100,
+        xs: list[np.ndarray], ys: list[np.ndarray], num_samples: int = 500,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     # Determine the maximum x value across all datasets
     max_x = max(x_vals.max() for x_vals in xs)
@@ -860,12 +860,13 @@ def find_best_attn_setting_diffusion(file: str) -> None:
     
 
 if __name__ == "__main__":
-    to_plot_list = ["val_pplx", "val_loss", "val_acc"]
+    to_plot_list = ["val_pplx"]
     from_step_list = [0]
     attn_types_list = ["vanilla"]
     save = False
     file_1000 = "../results/results_llm_1000_steps_100_tries_sqrt_dh.csv"
     file_10e = "../results/results_llm_10_epochs_10_tries_sqrt_dh.csv"
+    files = [file_1000, file_10e]
 
     # plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
     #     file=file_10e,
@@ -878,20 +879,20 @@ if __name__ == "__main__":
     #     plot_over="token",
     # )
 
-    for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
-        print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
+    for to_plot, from_step, attn_type, file in itertools.product(to_plot_list, from_step_list, attn_types_list, files):
+        print(f"Plotting {to_plot} for {attn_type} from step {from_step}, file {file}\n")
         plot_llm_1000_steps_100_tries_by_norm_position(
-            file=file_1000,
+            file=file,
             attn_type=attn_type, 
             to_plot=to_plot,
-            plot_over="token",
+            plot_over="epoch",
             show_all_plots=False,
             from_step=from_step,
             save=save,
             logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
         )
-        # print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
-        # plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
+        print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
+        plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
     # for to_plot in ("val_loss", "train_loss"):
     #     print(f"Plotting {to_plot} for vanilla from step 0")
     #     get_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot, from_step=800)
