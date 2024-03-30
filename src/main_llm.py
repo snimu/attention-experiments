@@ -632,8 +632,9 @@ def train(
 
         loss.div(current_accumulate_steps).backward()
         tokens_seen += current_batchsize * current_sequence_length
-        tokens_seen_train.append(tokens_seen)
-        epochs_train.append(tokens_seen//len(data['train']))
+        if crnt_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not crnt_steps % hyp['opt']['eval_iter'] == 0:
+            tokens_seen_train.append(tokens_seen)
+            epochs_train.append(tokens_seen//len(data['train']))
         microbatches_since_last_eval += 1
 
         ## Once we've accumulated steps over all of our microbatches, take a single full-batchsize step.
