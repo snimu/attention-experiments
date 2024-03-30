@@ -5,6 +5,7 @@ import copy
 import itertools
 import math
 import os
+from typing import Literal
 
 import polars as pl
 import matplotlib.pyplot as plt
@@ -38,9 +39,10 @@ def load_xs_ys_avg_y(
         residual_depth: int | None = None,
         logit_scalar: str | None = None,
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load x, y, and average y from a CSV file."""
-    assert to_plot in ("train_loss", "train_acc", "val_loss", "val_acc"), f"Invalid to_plot: {to_plot}"
+    assert to_plot in ("train_loss", "train_acc", "val_loss", "val_acc", "val_pplx"), f"Invalid to_plot: {to_plot}"
 
     filters = (pl.col("attn_type") == attn_type)
     if feature_map_qkv is not None:
@@ -63,9 +65,27 @@ def load_xs_ys_avg_y(
         filters &= (pl.col("logit_scalar") == logit_scalar)
 
     df = pl.scan_csv(file).filter(filters).collect()
-
     columns_list = [c for c in df.columns if (to_plot in c) and ("avg" not in c)]
-    ys = np.array([series_to_array(df[c]) for c in columns_list])
+    columns_list.sort(key=lambda x: int(x.split("_")[-1]))
+    arrays = [series_to_array(df[c]) for c in columns_list]
+
+    if plot_over == "step":
+        return load_steps_ys_avg_ys(df, arrays, to_plot)
+    elif plot_over == "epoch":
+        return load_epochs_ys_avg_ys(df, arrays, to_plot)
+    elif plot_over == "token":
+        return load_tokens_ys_avg_ys(df, arrays, to_plot)
+    else:
+        raise ValueError(f"{plot_over} not a valid x-value")
+
+
+def load_steps_ys_avg_ys(
+        df: pl.DataFrame,
+        arrays: list[np.ndarray],
+        to_plot: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    min_len = min([len(a) for a in arrays])
+    ys = np.array([list(a[:min_len]) for a in arrays])
     num_datapoints = len(ys[0])
 
     if "train" in to_plot:
@@ -78,6 +98,55 @@ def load_xs_ys_avg_y(
     return xs, ys, avg_ys
 
 
+def load_epochs_ys_avg_ys(
+        df: pl.DataFrame,
+        arrays: list[np.ndarray],
+        to_plot: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    epochs_str = "epochs_train_" if "train" in to_plot else "epochs_val_"
+    epoch_cols = [c for c in df.columns if epochs_str in c]
+    epoch_cols.sort(key=lambda x: int(x.split("_")[-1]))
+    xs = [series_to_array(df[c]) for c in epoch_cols]
+    return interpolate_linearly(xs, arrays)
+
+
+def load_tokens_ys_avg_ys(
+        df: pl.DataFrame,
+        arrays: list[np.ndarray],
+        to_plot: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    tokens_str = "tokens_seen_train_" if "train" in to_plot else "tokens_seen_val_"
+    tokens_cols = [c for c in df.columns if tokens_str in c]
+    tokens_cols.sort(key=lambda x: int(x.split("_")[-1]))
+    xs = [series_to_array(df[c]) for c in tokens_cols]
+    return interpolate_linearly(xs, arrays)
+
+
+def interpolate_linearly(
+        xs: list[np.ndarray], ys: list[np.ndarray], num_samples: int = 100,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # Determine the maximum x value across all datasets
+    max_x = max(x_vals.max() for x_vals in xs)
+    
+    # Generate a single set of new x values for all datasets
+    new_x_vals = np.linspace(0, max_x, num_samples)
+
+    new_ys = []
+    for x_vals, y_vals in zip(xs, ys):
+        # Interpolate y to the common set of new x values
+        new_y_vals = np.interp(new_x_vals, x_vals, y_vals)
+        new_ys.append(new_y_vals)
+
+    # Convert new_ys to a 2D numpy array for easy manipulation
+    new_ys = np.array(new_ys)
+    
+    # Calculate the average y values across all datasets
+    avg_ys = np.nanmean(new_ys, axis=0)
+
+    return new_x_vals, new_ys, avg_ys
+
+
+
 def plot_loss_curves_llm_single_attn(
         file: str,
         attn_type: str,
@@ -86,6 +155,7 @@ def plot_loss_curves_llm_single_attn(
         use_out_proj: bool | None = None,
         identity_weight: float | None = None,
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
 ) -> None:
     """Plot loss curves."""
     xs, ys, avg_ys = load_xs_ys_avg_y(
@@ -96,14 +166,15 @@ def plot_loss_curves_llm_single_attn(
         use_out_proj=use_out_proj,
         identity_weight=identity_weight,
         to_plot=to_plot,
+        plot_over=plot_over,
     )
 
     plt.figure(figsize=(8, 6))
     for y in ys:
         plt.plot(xs, y, "k", alpha=0.1)
     plt.plot(xs, avg_ys, "r", label="Average")
-    plt.xlabel("Steps")
-    plt.ylabel("Loss")
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
     plt.title(f"{attn_type} {to_plot}")
     plt.legend()
     plt.show()
@@ -191,6 +262,7 @@ def get_unique_settings(
 def plot_llm_1500_steps_by_norm_position(
         file: str = "../results/results_llm_1500_steps.csv",
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
         attn_type: str | None  = "vanilla",
         show_all_plots: bool = False,
 ) -> None:
@@ -207,6 +279,7 @@ def plot_llm_1500_steps_by_norm_position(
             use_x_norm=use_x_norm,
             use_qkv_norm=use_qkv_norm,
             to_plot=to_plot,
+            plot_over=plot_over,
         )
         label = f"{attn_type}"
         if use_x_norm:
@@ -217,7 +290,7 @@ def plot_llm_1500_steps_by_norm_position(
         if show_all_plots:
             for y in ys:
                 plt.plot(xs, y, color, alpha=0.2)
-    plt.xlabel("Steps")
+    plt.xlabel(plot_over)
     plt.ylabel("Loss")
     plt.title(f"Average {to_plot}")
     plt.legend()
@@ -228,6 +301,7 @@ def plot_llm_1500_steps_by_norm_position(
 def plot_llm_1000_steps_100_tries_by_norm_position(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
         attn_type: str | None  = "vanilla",
         show_all_plots: bool = False,
         from_step: int = 0,
@@ -248,6 +322,7 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
             use_qkv_norm=use_qkv_norm,
             logit_scalar=logit_scalar,
             to_plot=to_plot,
+            plot_over=plot_over,
         )
         label = f"{attn_type}"
         if use_x_norm:
@@ -260,8 +335,8 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
                 plt.plot(xs[mask], y[mask], color, alpha=0.3/math.sqrt(len(ys)))
         plt.plot(xs[mask], avg_y[mask], color=color, label=label, linewidth=2)
 
-    plt.xlabel("Steps")
-    plt.ylabel("Loss" if "loss" in to_plot else "Accuracy")
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
     plt.title(f"Average {to_plot}")
     plt.legend()
     fig = plt.gcf()
@@ -279,8 +354,9 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
 
 
 def plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
-        file: str = "../results/results_llm_1000_steps_100_tries.csv",
+        file: str = "../results/results_llm_1000_steps_100_tries_sqrt_dh.csv",
         to_plot_set: list[str] | str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
         attn_type: str | None  = "vanilla",
         show_all_plots: bool = False,
         from_step_set: list[str] | int = 0,
@@ -313,6 +389,7 @@ def plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
                 use_qkv_norm=use_qkv_norm,
                 logit_scalar=logit_scalar,
                 to_plot=to_plot,
+                plot_over=plot_over,
             )
             label = f"{attn_type}"
             if use_x_norm:
@@ -326,7 +403,7 @@ def plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
             axs[row, col].plot(xs[mask], avg_y[mask], color=color, label=label, linewidth=2)
 
         if row == nrows - 1:
-            axs[row, col].set_xlabel("Steps")
+            axs[row, col].set_xlabel(plot_over)
         axs[row, col].set_ylabel(to_plot)
         axs[row, col].grid()
 
@@ -354,6 +431,7 @@ def plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         attn_type: str = "vanilla",
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
         show_all_plots: bool = True,
         use_x_norm: bool = False,
         use_qkv_norm: bool = False,
@@ -366,12 +444,13 @@ def plot_llm_1000_steps_100_tries_by_norm_position_single_setting(
         use_qkv_norm=use_qkv_norm,
         logit_scalar=logit_scalar,
         to_plot=to_plot,
+        plot_over=plot_over,
     )
     if show_all_plots:
         for y in ys:
             plt.plot(xs, y, alpha=0.3, color="pink")
     plt.plot(xs, avg_y, label=f"{attn_type}: mean", color="red", linewidth=2)
-    plt.xlabel("Steps")
+    plt.xlabel(plot_over)
     plt.ylabel(to_plot)
     plt.title(f"Average {to_plot}")
     plt.grid()
@@ -382,6 +461,7 @@ def plot_metric_variance(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         attn_type: str = "vanilla",
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
         from_step: int = 0,
         save: bool = False,
 ) -> None:
@@ -399,6 +479,7 @@ def plot_metric_variance(
             use_qkv_norm=use_qkv_norm,
             logit_scalar="sqrt_dh",
             to_plot=to_plot,
+            plot_over=plot_over,
         )
         label = f"{attn_type}"
         if use_x_norm:
@@ -406,7 +487,7 @@ def plot_metric_variance(
         if use_qkv_norm:
             label += " qkv-norm"
         plt.plot(xs[xs >= from_step], np.std(ys, axis=0)[xs >= from_step], label=label, color=color)
-    plt.xlabel("Steps")
+    plt.xlabel(plot_over)
     plt.ylabel("Standard deviation")
     plt.title(f"Standard deviation of {to_plot}")
 
@@ -433,6 +514,8 @@ def get_loss_acc_correlation(
         train: bool = False,
         from_step: int = 0,
         verbose: bool = True,
+        logit_scalar: str = "sqrt_dh",
+        plot_over: Literal["step", "epoch", "token"] = "step",
 ) -> dict[str, float]:
     settings = get_unique_settings(
         file, 
@@ -448,8 +531,9 @@ def get_loss_acc_correlation(
             attn_type=attn_type,
             use_x_norm=use_x_norm,
             use_qkv_norm=use_qkv_norm,
-            logit_scalar="sqrt_dh",
+            logit_scalar=logit_scalar,
             to_plot=("train" if train else "val") + "_loss",
+            plot_over=plot_over,
         )
         xsa, _, avg_acc = load_xs_ys_avg_y(
             file=file,
@@ -458,6 +542,7 @@ def get_loss_acc_correlation(
             use_qkv_norm=use_qkv_norm,
             logit_scalar="sqrt_dh",
             to_plot=("train" if train else "val") + "_acc",
+            plot_over=plot_over,
         )
         assert (xsl == xsa).all()
         mask = xsl >= from_step
@@ -485,6 +570,7 @@ def get_loss_acc_correlation(
 def plot_correlations(
         file: str = "../results/results_llm_1000_steps_100_tries.csv",
         attn_type: str = "vanilla",
+        logit_scalar: str = "sqrt_dh",
         from_step_list: list[int] | None = None,
 ) -> None:
     if from_step_list is None:
@@ -500,6 +586,7 @@ def plot_correlations(
                 train=train,
                 from_step=from_step,
                 verbose=False,
+                logit_scalar=logit_scalar,
             )
             for label, correlation in correlations.items():
                 if label not in results:
@@ -545,6 +632,7 @@ def plot_correlations(
 def plot_loss_curves_avg_contrast_1500_steps(
         file: str = "../results/results_llm_1500_steps.csv",
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
 ) -> None:
     attn_types = get_attn_types(file)
     settings = []
@@ -566,14 +654,15 @@ def plot_loss_curves_avg_contrast_1500_steps(
             file = file,
             attn_type = attn_type,
             to_plot=to_plot,
+            plot_over=plot_over,
             feature_map_attn=feature_map_attn,
             feature_map_qkv=feature_map_qkv,
         )
         plt.plot(xs, avg_y, color=color, label=f"{attn_type} ({feature_map_qkv}-{feature_map_attn})")
         for y in ys:
             plt.plot(xs, y, color, alpha=0.2)
-    plt.xlabel("Steps")
-    plt.ylabel("Loss")
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
     plt.title(f"Average {to_plot}")
     plt.legend()
     plt.show()
@@ -582,6 +671,7 @@ def plot_loss_curves_avg_contrast_1500_steps(
 def plot_loss_curves_feature_maps(
         attn_type: str,
         to_plot: str = "val_loss",
+        plot_over: Literal["step", "epoch", "token"] = "step",
 ) -> None:
     """Plot loss curves."""
     # The given attn type is plotted thrice:
@@ -613,6 +703,7 @@ def plot_loss_curves_feature_maps(
             feature_map_qkv=feature_map_qkv,
             feature_map_attn=feature_map_attn,
             to_plot=to_plot,
+            plot_over=plot_over,
         )
         label = f"{attn_type}"
         if attn_type not in ("identity", "vanilla"):
@@ -621,8 +712,8 @@ def plot_loss_curves_feature_maps(
 
         for y in ys:
             plt.plot(xs, y, alpha=0.1, color=color)
-    plt.xlabel("Steps")
-    plt.ylabel("Loss")
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
     plt.title(f"{attn_type} {to_plot}")
     plt.legend()
     plt.grid()
@@ -769,37 +860,39 @@ def find_best_attn_setting_diffusion(file: str) -> None:
     
 
 if __name__ == "__main__":
-    to_plot_list = ["train_loss", "train_acc", "val_loss", "val_acc"]
-    from_step_list = [0, 800]
-    attn_types_list = ["vanilla", "hydra"]
-    save = True
-    file_1000 = "../results/results_llm_1000_steps_100_tries_ForgotToTrackBatchAndNumTokens.csv"
-    file_1500 = "../results/results_llm_1500_steps_ForgotToTrackBatchAndNumTokens.csv"
+    to_plot_list = ["val_pplx", "val_loss", "val_acc"]
+    from_step_list = [0]
+    attn_types_list = ["vanilla"]
+    save = False
+    file_1000 = "../results/results_llm_1000_steps_100_tries_sqrt_dh.csv"
+    file_10e = "../results/results_llm_10_epochs_10_tries_sqrt_dh.csv"
 
-    plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
-        file=file_1000,
-        to_plot_set=["train_loss", "val_loss", "train_acc", "val_acc"],
-        attn_type="vanilla",
-        show_all_plots=False,
-        from_step_set=[0, 800],
-        save=save,
-        logit_scalar="sqrt_dh",
-    )
+    # plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
+    #     file=file_10e,
+    #     to_plot_set=["train_loss", "val_loss", "train_acc", "val_acc"],
+    #     attn_type="vanilla",
+    #     show_all_plots=False,
+    #     from_step_set=[0, 800],
+    #     save=save,
+    #     logit_scalar="sqrt_dh",
+    #     plot_over="token",
+    # )
 
-    # for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
-    #     print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
-    #     plot_llm_1000_steps_100_tries_by_norm_position(
-    #         file=file_1000,
-    #         attn_type=attn_type, 
-    #         to_plot=to_plot,
-    #         show_all_plots=False,
-    #         from_step=from_step,
-    #         save=save,
-    #         logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
-    #     )
-    #     print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
-    #     plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
+    for to_plot, from_step, attn_type in itertools.product(to_plot_list, from_step_list, attn_types_list):
+        print(f"Plotting {to_plot} for {attn_type} from step {from_step}")
+        plot_llm_1000_steps_100_tries_by_norm_position(
+            file=file_1000,
+            attn_type=attn_type, 
+            to_plot=to_plot,
+            plot_over="token",
+            show_all_plots=False,
+            from_step=from_step,
+            save=save,
+            logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
+        )
+        # print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
+        # plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
     # for to_plot in ("val_loss", "train_loss"):
     #     print(f"Plotting {to_plot} for vanilla from step 0")
     #     get_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot, from_step=800)
-    plot_correlations(file=file_1000, attn_type="vanilla", from_step_list=[0, 800])
+    # plot_correlations(file=file_10e, attn_type="vanilla", from_step_list=[0, 800], logit_scalar="sqrt_dh")
