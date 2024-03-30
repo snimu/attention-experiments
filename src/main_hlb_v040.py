@@ -11,6 +11,8 @@ try:
 except NameError:
   pass ## we're still good
 """
+import itertools
+import argparse
 import functools
 from functools import partial
 import subprocess
@@ -18,6 +20,8 @@ import subprocess
 import zipfile
 import math
 import os
+
+import polars as pl
 
 import torch
 import torch.nn.functional as F
@@ -66,7 +70,6 @@ tokens_per_batch_capacity  = math.floor(gpu_token_capacity / (1.52174 + .482 * m
 # We support fractional model factors, this picks dimensions that the A100 can efficiently use.
 to_nearest_64 = lambda x: round(x/64) * 64
 
-
 # The default model here below is roughly ~46M parameters or so.
 hyp = {
     'opt': {
@@ -105,6 +108,13 @@ hyp = {
         'data_location': 'data.pt',
     }
 }
+
+
+def change_model_scale(scale):
+    global hyp, model_scale
+    model_scale = scale
+    hyp['net']['residual_depth'] = to_nearest_64(384 * math.log2(1.+scale))
+    hyp['net']['num_blocks']     = round(8 * math.log2(1.+scale))
 
 
 #############################################
@@ -177,7 +187,12 @@ batch_index_offsets = torch.arange(0, hyp['misc']['sequence_length']['max']+1, d
 
 class LatentAttentionBlock(nn.Module):
     """ Efficient fused latent-space attention block. Linear keys and queries, nonlinear values."""
-    def __init__(self, num_dim):
+    def __init__(
+            self, 
+            num_dim,
+            x_norm: nn.Module,
+            qk_norm: nn.Module,
+    ):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
         self.dim        = num_dim
@@ -186,7 +201,8 @@ class LatentAttentionBlock(nn.Module):
         self.expand_dim = num_dim * hyp['net']['expand_factor']
 
         # Main layer weights
-        self.norm    = nn.LayerNorm(self.dim, bias=False)
+        self.x_norm  = x_norm
+        self.qk_norm = qk_norm
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
@@ -201,16 +217,74 @@ class LatentAttentionBlock(nn.Module):
         attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
 
         # Shared LayerNorm for linear layers and attention
-        x = self.norm(x)
+        x = self.x_norm(x)
 
         # Fused into one kernel for memory+speed/etc
         query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
-
+        query, key = self.qk_norm(query), self.qk_norm(key)
+    
         # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
         geglu = linear * F.gelu(pre_gelu)
 
         # Partition between the input values and the v dim values
         geglu_local, geglu_attention_value = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+
+        # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
+        attention = F.scaled_dot_product_attention(query, key, geglu_attention_value, attn_mask=attn_mask)
+
+        # Output linear layer
+        out = F.linear(torch.cat([geglu_local, attention], dim=-1), self.project)
+
+        # Add to residual
+        x = residual + out
+
+        return x
+    
+
+class LatentAttentionBlockLinear(nn.Module):
+    """ Efficient fused latent-space attention block. Linear keys, queries, and values."""
+    def __init__(
+            self, 
+            num_dim,
+            x_norm: nn.Module,
+            qk_norm: nn.Module,
+    ):
+        super().__init__()
+        # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
+        self.dim        = num_dim
+        self.qk_dim     = self.dim//hyp['net']['qk_dim_div']
+        self.v_dim      = num_dim
+        self.expand_dim = num_dim * hyp['net']['expand_factor']
+
+        # Main layer weights
+        self.x_norm  = x_norm
+        self.qk_norm = qk_norm
+        self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
+        self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
+
+        # Learnable linear positional encodings. Similar to but different than https://arxiv.org/abs/2108.12409
+        # Has a high lr mult applied to it so that each layer can learn its own attention scale.
+        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda'))
+
+    def forward(self, x):
+        residual = x
+
+        # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
+        attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+
+        # Shared LayerNorm for linear layers and attention
+        x = self.x_norm(x)
+
+        # Fused into one kernel for memory+speed/etc
+        query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
+        query, key = self.qk_norm(query), self.qk_norm(key)
+    
+        # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
+        geglu = linear * F.gelu(pre_gelu)
+
+        # Partition between the input values and the v dim values
+        geglu_local, _ = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+        _, geglu_attention_value = pre_gelu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
 
         # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
         attention = F.scaled_dot_product_attention(query, key, geglu_attention_value, attn_mask=attn_mask)
@@ -242,12 +316,27 @@ class SpeedyLangNet(nn.Module):
         x = self.net_dict['norm'](x)
         x = self.net_dict['outputs'](x)
         return x
+    
+
+def make_norms(num_dim, **kwargs):
+    x_norm = nn.LayerNorm(num_dim, bias=False) if kwargs["use_x_norm"] else nn.Identity()
+    qk_norm = nn.LayerNorm(num_dim, elementwise_affine=False, bias=False) if kwargs["use_qk_norm"] else nn.Identity()
+    return x_norm, qk_norm
 
 
-def make_net():
+
+def make_attn(num_dim, **kwargs):
+    x_norm, qk_norm = make_norms(num_dim, **kwargs)
+    if kwargs["linear"]:
+        return LatentAttentionBlockLinear(num_dim, x_norm, qk_norm)
+    else:
+        return LatentAttentionBlock(num_dim, x_norm, qk_norm)
+
+
+def make_net(**kwargs):
     network_dict = nn.ModuleDict({
         'embedding': nn.Embedding(hyp['misc']['num_tokens'], hyp['net']['residual_depth'], scale_grad_by_freq=True),
-        'attn_layers': nn.ModuleList([LatentAttentionBlock(hyp['net']['residual_depth']) for _ in range(hyp['net']['num_blocks'])]),
+        'attn_layers': nn.ModuleList([make_attn(hyp['net']['residual_depth'], **kwargs) for _ in range(hyp['net']['num_blocks'])]),
         'norm': nn.LayerNorm(hyp['net']['residual_depth'], bias=False),
         'outputs': nn.Linear(hyp['net']['residual_depth'], hyp['misc']['num_tokens'], bias=False),
 })
@@ -405,7 +494,7 @@ def eval(net):
 
     return val_acc.item(), val_loss.item(), val_perplexity.item()
 
-def main():
+def train(**kwargs):
 
     #################
     #     Init      #
@@ -430,7 +519,7 @@ def main():
     val_loss, val_acc, val_perplexity = None, None, None
 
     # Get network
-    net = make_net()
+    net = make_net(**kwargs)
 
     # Get the total number of parameters in our model and use that to generate/calculate the base lr.
     total_trainable_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
@@ -473,6 +562,17 @@ def main():
     opt               = torch.optim.AdamW(param_groups_dict.values(), fused=True)
     scheduler         = torch.optim.lr_scheduler.LambdaLR(opt, [k['scheduler'] for k in param_groups_dict.values()])
 
+    train_losses = []
+    val_losses = []
+    train_accs = []
+    val_accs = []
+    val_pplxs = []
+    avg_batch_times = []
+    tokens_seen_train = []
+    tokens_seen_val = []
+    epochs_train = []
+    epochs_val = []
+    grad_norm_list = []
 
     #################
     # Training Mode #
@@ -506,7 +606,10 @@ def main():
             train_summary_vars = {'epoch': tokens_seen//len(data['train']), 'curr_step': curr_step, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm}
 
             print_training_details(format_for_table(variables_to_log, locals=train_summary_vars))
-
+            train_losses.append(train_loss)
+            train_accs.append(train_acc)
+            tokens_seen_train.append(tokens_seen)
+            epochs_train.append(tokens_seen//len(data['train']))
 
         # Once we've accumulated steps over all of our microbatches, take a single full-batchsize step.
         if curr_microbatch_step % discrete_sampled_microbatch_steps == 0:
@@ -560,8 +663,13 @@ def main():
                 net.eval()
                 val_acc, val_loss, val_perplexity = eval(net)
 
-                if (curr_step//hyp['opt']['eval_every']) % hyp['opt']['save_every_n_evals'] == 0:
-                    torch.save(net, 'model.pt')
+                # Log the validation loss and accuracy
+                val_losses.append(val_loss)
+                val_accs.append(val_acc)
+                val_pplxs.append(val_perplexity)
+                tokens_seen_val.append(tokens_seen)
+                epochs_val.append(tokens_seen//len(data['train']))
+                grad_norm_list.append(grad_norm)
 
                 # Print out our training details
                 ## We also check to see if we're on our final eval loop (assum that max_curr_step lines up with the eval_every value) so we can print the 'bottom' of the table for each round.
@@ -573,32 +681,94 @@ def main():
                 net.train()
         curr_microbatch_step += 1
 
-    return net, val_loss # Return the final validation loss achieved (not using the 'best validation loss' selection strategy, which I think is okay here....)
+    return total_trainable_params, train_losses, val_losses, train_accs, val_accs, val_pplxs, grad_norm_list, total_seconds, tokens_seen_train, tokens_seen_val, epochs_train, epochs_val
+
+
+def get_args_() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train a model on a dataset.")
+
+    parser.add_argument("-s", "--save", action="store_true", help="Save the model.")
+    parser.add_argument("--savefile", type=int, default="results_040.csv", help="Save the results to a file.")
+    parser.add_argument("--num_tries", type=int, default=1, help="Number of tries to train the model.")
+    parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps to train the model.")
+    parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs to train the model.")
+    parser.add_argument("--num_tokens", type=int, default=int(1e12), help="Number of tokens used to train the model.")
+    parser.add_argument("--model_scale", type=float, default=1.0, nargs="+", help="Scale the model size.")
+    parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
+    parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
+    parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
+
+    args = parser.parse_args()
+
+    args.model_scale = [args.model_scale] if isinstance(args.model_scale, float) else args.model_scale
+    args.linear = [args.linear] if isinstance(args.linear, int) else args.linear 
+    args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, int) else args.use_x_norm
+    args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.use_qk_norm
+
+    args.linear = [bool(i) for i in args.linear]
+    args.use_x_norm = [bool(i) for i in args.use_x_norm]
+    args.use_qk_norm = [bool(i) for i in args.use_qk_norm]
+
+    return args
+
+
+def main():
+    args = get_args_()
+
+    settings = list(itertools.product(args.model_scale, args.linear, args.use_x_norm, args.use_qk_norm))
+    crnt_run_global = 0
+
+    for setting_num, (model_scale, linear, use_x_norm, use_qk_norm) in enumerate(settings):
+        change_model_scale(model_scale)
+        for run_num in range(args.num_runs):
+            crnt_run_global += 1
+            feedback = f"\nSetting {setting_num+1}/{len(settings)} | Run {run_num+1}/{args.num_runs} | Global Run {crnt_run_global}/{args.num_runs*len(settings)}"
+            feedback += f"\nLinear: {linear} | Use X Norm: {use_x_norm} | Use QK Norm: {use_qk_norm}\n"
+            separator = ":" * max(len(line) for line in feedback.split("\n"))
+            feedback = separator + feedback + separator
+            print(f"\n{feedback}\n")
+
+            (
+                    total_trainable_params,
+                    train_losses, val_losses, train_accs, val_accs, val_pplxs, 
+                    grad_norm_list, total_seconds, 
+                    tokens_seen_train, tokens_seen_val, 
+                    epochs_train, epochs_val
+            ) = train(
+                linear=linear, 
+                use_x_norm=use_x_norm, 
+                use_qk_norm=use_qk_norm, 
+                num_steps=args.num_steps,
+                num_epochs=args.num_epochs, 
+                num_tokens=args.num_tokens,
+            )
+            results = {
+                "num_params": [total_trainable_params],
+                "linear": [linear],
+                "use_x_norm": [use_x_norm],
+                "use_qk_norm": [use_qk_norm],
+                "train_loss": [str(train_losses)],
+                "val_loss": [str(val_losses)],
+                "train_acc": [str(train_accs)],
+                "val_acc": [str(val_accs)],
+                "val_ppl": [str(val_pplxs)],
+                "grad_norm": [str(grad_norm_list)],
+                "total_seconds": [str(total_seconds)],
+                "tokens_seen_train": [str(tokens_seen_train)],
+                "tokens_seen_val": [str(tokens_seen_val)],
+                "epochs_train": [str(epochs_train)],
+                "epochs_val": [str(epochs_val)],
+            }
+            df = pl.DataFrame(results)
+
+
+            if args.save:
+                if not os.path.exists(args.savefile) or ((not args.append) and (run_num == setting_num == 0)):
+                    df.write_csv(args.savefile)
+                else:
+                    with open(args.savefile, 'ab') as f:
+                        df.write_csv(f, include_header=False)
 
 
 if __name__ == "__main__":
-    final_val_loss_list = []
-    for _ in range(1):
-        net, val_loss = main()
-        final_val_loss_list.append(val_loss)
-    print(f"Average final val loss: {sum(final_val_loss_list)/len(final_val_loss_list)}") # TODO add variance as well, later
-
-
-########################
-#    Inference Test    #
-########################
-net = torch.load('model.pt')
-
-net.eval()
-demo_sentence = "In 1856, Abraham Lincoln"
-
-tokenizer = tiktoken.get_encoding("gpt2")
-tokenized_demo_sentence = torch.tensor(tokenizer.encode_ordinary(demo_sentence), dtype=torch.int, device='cuda').unsqueeze(0)
-
-import sys; sys.setrecursionlimit(max_sequence_length*2)
-inference = lambda x, length=512, temp=1.: inference(torch.cat((x, torch.multinomial(net(x)[:, -1].div(temp).softmax(-1), 1)), dim=-1), length-1) if length > 0 else x
-
-import textwrap
-with torch.no_grad():
-    print("\nprompt: \n", textwrap.fill(tokenizer.decode(tokenized_demo_sentence.squeeze().cpu().numpy()), 80,  replace_whitespace=False))
-    print("decoded result: \n", textwrap.fill(tokenizer.decode(inference(tokenized_demo_sentence).squeeze().cpu().numpy()), 80,  replace_whitespace=False))
+    main()
