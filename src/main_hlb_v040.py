@@ -688,6 +688,7 @@ def get_args_() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a model on a dataset.")
 
     parser.add_argument("-s", "--save", action="store_true", help="Save the model.")
+    parser.add_argument("--append", action="store_true", help="Append the results to a file.")
     parser.add_argument("--savefile", type=int, default="results_040.csv", help="Save the results to a file.")
     parser.add_argument("--num_tries", type=int, default=1, help="Number of tries to train the model.")
     parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps to train the model.")
