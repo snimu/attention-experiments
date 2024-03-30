@@ -1049,7 +1049,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             )
 
     if args.save:  # only works if save was passed -> you only get a summary when you save
-        df = pl.read_csv('results_llm.csv')
+        df = pl.read_csv(args.savefile)
         df = df.sort(by="avg_val_loss")
         rich.print("\n\nSorted Results:\n\n")
         rich.print(str(df.columns[:11]))
