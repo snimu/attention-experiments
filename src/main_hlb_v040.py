@@ -678,6 +678,8 @@ def train(**kwargs):
                 is_final_eval = (curr_step >= hyp['opt']['total_train_steps']) # If we're at the end of training, add a line after the end of the run
                 print_training_details(format_for_table(variables_to_log, locals=locals()), is_final_entry=is_final_eval)
 
+                if epoch >= kwargs["num_epochs"] or tokens_seen >= kwargs["num_tokens"]:
+                    break
                 torch.cuda.synchronize()
                 starter.record()
                 net.train()
