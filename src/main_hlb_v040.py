@@ -443,7 +443,7 @@ def grow_sequence_length(old_length, old_batchsize):
 #          Logging           #
 ##############################
 
-variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_perplexity', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_seconds']
+variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_secs']
 # define the printing function and print the column heads
 def print_training_details(columns_list, separator_left='  ', separator_right='  |', column_labels_only=False, is_final_entry=False):
     output_line = "|" # start with the left bar
@@ -496,9 +496,9 @@ def eval(net):
             val_loss += 1./num_eval_steps * loss_fn(outputs.flatten(0, 1).float(), targets.flatten(0, 1))
             val_acc  += 1./num_eval_steps * (outputs.argmax(-1) == targets).float().mean()
 
-        val_perplexity = 2.71828 ** val_loss
+        val_pplx = 2.71828 ** val_loss
 
-    return val_acc.item(), val_loss.item(), val_perplexity.item()
+    return val_acc.item(), val_loss.item(), val_pplx.item()
 
 def train(**kwargs):
 
@@ -506,7 +506,7 @@ def train(**kwargs):
     #     Init      #
     #################
     # Full-run statistics variables
-    total_seconds        = 0.
+    total_secs        = 0.
     curr_microbatch_step = curr_step = 0
     tokens_seen          = 0
 
@@ -522,7 +522,7 @@ def train(**kwargs):
     assert final_batchsize > 1, f"Error: Specified configuration takes up too much memory (calculated final batchsize {final_batchsize} is less than 1!)"
 
     # Validation parameters
-    val_loss, val_acc, val_perplexity = None, None, None
+    val_loss, val_acc, val_pplx = None, None, None
 
     # Get network
     net = make_net(**kwargs)
@@ -573,7 +573,7 @@ def train(**kwargs):
     train_accs = []
     val_accs = []
     val_pplxs = []
-    avg_batch_times = []
+    cumulative_time = []
     tokens_seen_train = []
     tokens_seen_val = []
     epochs_train = []
@@ -663,16 +663,17 @@ def train(**kwargs):
                 ender.record()
                 torch.cuda.synchronize()
 
-                total_seconds += 1e-3 * starter.elapsed_time(ender)
+                total_secs += 1e-3 * starter.elapsed_time(ender)
+                cumulative_time.append(total_secs)
                 train_loss = loss.detach().cpu().item() # Update the loss for the training details printout
 
                 net.eval()
-                val_acc, val_loss, val_perplexity = eval(net)
+                val_acc, val_loss, val_pplx = eval(net)
 
                 # Log the validation loss and accuracy
                 val_losses.append(val_loss)
                 val_accs.append(val_acc)
-                val_pplxs.append(val_perplexity)
+                val_pplxs.append(val_pplx)
                 tokens_seen_val.append(tokens_seen)
                 epochs_val.append(tokens_seen//len(data['train']))
                 grad_norm_list.append(grad_norm)
@@ -687,7 +688,7 @@ def train(**kwargs):
                 net.train()
         curr_microbatch_step += 1
 
-    return total_trainable_params, train_losses, val_losses, train_accs, val_accs, val_pplxs, grad_norm_list, total_seconds, tokens_seen_train, tokens_seen_val, epochs_train, epochs_val
+    return total_trainable_params, train_losses, val_losses, train_accs, val_accs, val_pplxs, grad_norm_list, cumulative_time, tokens_seen_train, tokens_seen_val, epochs_train, epochs_val
 
 
 def get_args_() -> argparse.Namespace:
@@ -744,7 +745,7 @@ def main():
             (
                     total_trainable_params,
                     train_losses, val_losses, train_accs, val_accs, val_pplxs, 
-                    grad_norm_list, total_seconds, 
+                    grad_norm_list, cumulative_time, 
                     tokens_seen_train, tokens_seen_val, 
                     epochs_train, epochs_val
             ) = train(
@@ -766,7 +767,7 @@ def main():
                 "val_acc": [str(val_accs)],
                 "val_ppl": [str(val_pplxs)],
                 "grad_norm": [str(grad_norm_list)],
-                "total_seconds": [str(total_seconds)],
+                "cumulative_time": [str(cumulative_time)],
                 "tokens_seen_train": [str(tokens_seen_train)],
                 "tokens_seen_val": [str(tokens_seen_val)],
                 "epochs_train": [str(epochs_train)],
