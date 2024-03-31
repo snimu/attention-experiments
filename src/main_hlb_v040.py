@@ -196,8 +196,8 @@ class LatentAttentionBlock(nn.Module):
     def __init__(
             self, 
             num_dim,
-            x_norm: nn.Module,
-            qk_norm: nn.Module,
+            use_x_norm: bool,
+            use_qk_norm: bool,
     ):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
@@ -207,8 +207,8 @@ class LatentAttentionBlock(nn.Module):
         self.expand_dim = num_dim * hyp['net']['expand_factor']
 
         # Main layer weights
-        self.x_norm  = x_norm
-        self.qk_norm = qk_norm
+        self.x_norm  = nn.LayerNorm(num_dim, bias=False) if use_x_norm else nn.Identity()
+        self.use_qk_norm = use_qk_norm
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
@@ -227,7 +227,8 @@ class LatentAttentionBlock(nn.Module):
 
         # Fused into one kernel for memory+speed/etc
         query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
-        query, key = self.qk_norm(query), self.qk_norm(key)
+        query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
+        key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
     
         # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
         geglu = linear * F.gelu(pre_gelu)
@@ -252,8 +253,8 @@ class LatentAttentionBlockLinear(nn.Module):
     def __init__(
             self, 
             num_dim,
-            x_norm: nn.Module,
-            qk_norm: nn.Module,
+            use_x_norm: bool,
+            use_qk_norm: bool,
     ):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
@@ -263,8 +264,8 @@ class LatentAttentionBlockLinear(nn.Module):
         self.expand_dim = num_dim * hyp['net']['expand_factor']
 
         # Main layer weights
-        self.x_norm  = x_norm
-        self.qk_norm = qk_norm
+        self.x_norm  = nn.LayerNorm(num_dim, bias=False) if use_x_norm else nn.Identity()
+        self.use_qk_norm = use_qk_norm
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
@@ -283,7 +284,8 @@ class LatentAttentionBlockLinear(nn.Module):
 
         # Fused into one kernel for memory+speed/etc
         query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
-        query, key = self.qk_norm(query), self.qk_norm(key)
+        query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
+        key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
     
         # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
         geglu = linear * F.gelu(pre_gelu)
@@ -322,21 +324,14 @@ class SpeedyLangNet(nn.Module):
         x = self.net_dict['norm'](x)
         x = self.net_dict['outputs'](x)
         return x
-    
-
-def make_norms(num_dim, **kwargs):
-    x_norm = nn.LayerNorm(num_dim, bias=False) if kwargs["use_x_norm"] else nn.Identity()
-    qk_norm = nn.LayerNorm(num_dim, elementwise_affine=False, bias=False) if kwargs["use_qk_norm"] else nn.Identity()
-    return x_norm, qk_norm
 
 
 
 def make_attn(num_dim, **kwargs):
-    x_norm, qk_norm = make_norms(num_dim, **kwargs)
     if kwargs["linear"]:
-        return LatentAttentionBlockLinear(num_dim, x_norm, qk_norm)
+        return LatentAttentionBlockLinear(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"])
     else:
-        return LatentAttentionBlock(num_dim, x_norm, qk_norm)
+        return LatentAttentionBlock(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"])
 
 
 def make_net(**kwargs):
