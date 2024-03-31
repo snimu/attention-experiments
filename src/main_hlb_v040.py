@@ -702,6 +702,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--num_tokens", type=int, default=int(1e12), help="Number of tokens used to train the model.")
     parser.add_argument("--model_scale", type=float, default=1.0, nargs="+", help="Scale the model size.")
     parser.add_argument("--token_capacity_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
+    parser.add_argument("--seed", type=int, default=100, help="Seed for the random number generator.")
     parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
     parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
     parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
@@ -729,7 +730,10 @@ def main():
 
     for setting_num, (model_scale, linear, use_x_norm, use_qk_norm) in enumerate(settings):
         change_model_scale(model_scale)
+        seed = args.seed
         for run_num in range(args.num_runs):
+            torch.manual_seed(seed)
+            seed += 1
             crnt_run_global += 1
             feedback = f"\nSetting {setting_num+1}/{len(settings)} | Run {run_num+1}/{args.num_runs} | Global Run {crnt_run_global}/{args.num_runs*len(settings)}"
             feedback += f"\nLinear: {linear} | Use X Norm: {use_x_norm} | Use QK Norm: {use_qk_norm}\n"
