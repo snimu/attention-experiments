@@ -11,6 +11,7 @@ try:
 except NameError:
   pass ## we're still good
 """
+from typing import Literal
 import itertools
 import argparse
 import functools
@@ -110,11 +111,20 @@ hyp = {
 }
 
 
-def change_model_scale(scale):
+def change_model_scale(scale, method: Literal["depth", "width", "both"] = "both"):
     global hyp, model_scale
     model_scale = scale
-    hyp['net']['residual_depth'] = to_nearest_64(384 * math.log2(1.+scale))
-    hyp['net']['num_blocks']     = round(8 * math.log2(1.+scale))
+    if method == "depth":
+        hyp['net']['residual_depth'] = 384
+        hyp['net']['num_blocks']     = round(8*scale)
+    elif method == "width":
+        hyp['net']['residual_depth'] = to_nearest_64(384 * math.sqrt(scale))  # params rises quadratically with width
+        hyp['net']['num_blocks']     = 8
+    elif method == "both":
+        hyp['net']['residual_depth'] = to_nearest_64(384 * math.log2(1.+scale))
+        hyp['net']['num_blocks']     = round(8 * math.log2(1.+scale))
+    else:
+        raise ValueError(f"method must be one of 'depth', 'width', or 'both', not {method}")
 
 
 def change_token_capacity(factor: float):
@@ -706,6 +716,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--num_tokens_train", type=int, default=int(1e12), help="Number of tokens after which to break when printing training details.")
     parser.add_argument("--num_tokens_val", type=int, default=int(1e12), help="Number of tokens after which to break when validating.")
     parser.add_argument("--model_scale", type=float, default=1.0, nargs="+", help="Scale the model size.")
+    parser.add_argument("--model_scale_method", type=str, choices=["depth", "width", "both"], nargs="+", default="both", help="Scale the model size using model depth, width, or both.")
     parser.add_argument("--token_capacity_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
     parser.add_argument("--seed", type=int, default=100, help="Seed for the random number generator.")
     parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
@@ -715,6 +726,7 @@ def get_args_() -> argparse.Namespace:
     args = parser.parse_args()
 
     args.model_scale = [args.model_scale] if isinstance(args.model_scale, float) else args.model_scale
+    args.model_scale_method = [args.model_scale_method] if isinstance(args.model_scale_method, str) else args.model_scale_method
     args.linear = [args.linear] if isinstance(args.linear, int) else args.linear 
     args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, int) else args.use_x_norm
     args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.use_qk_norm
@@ -730,15 +742,16 @@ def main():
     args = get_args_()
 
     change_token_capacity(args.token_capacity_factor)
-    settings = list(itertools.product(args.model_scale, args.linear, args.use_x_norm, args.use_qk_norm))
+    settings = list(itertools.product(
+        args.model_scale, args.model_scale_method, args.linear, args.use_x_norm, args.use_qk_norm
+    ))
     crnt_run_global = 0
 
-    for setting_num, (model_scale, linear, use_x_norm, use_qk_norm) in enumerate(settings):
-        change_model_scale(model_scale)
+    for setting_num, (model_scale, model_scale_method, linear, use_x_norm, use_qk_norm) in enumerate(settings):
+        change_model_scale(model_scale, model_scale_method)
         seed = args.seed
         for run_num in range(args.num_runs):
             torch.manual_seed(seed)
-            seed += 1
             crnt_run_global += 1
             feedback = f"\nSetting {setting_num+1}/{len(settings)} | Run {run_num+1}/{args.num_runs} | Global Run {crnt_run_global}/{args.num_runs*len(settings)}"
             feedback += f"\n{model_scale=} | {linear=} | {use_x_norm=} | {use_qk_norm=}\n"
@@ -763,10 +776,14 @@ def main():
                 num_tokens_val=args.num_tokens_val
             )
             results = {
-                "num_params": [total_trainable_params],
                 "linear": [linear],
                 "use_x_norm": [use_x_norm],
                 "use_qk_norm": [use_qk_norm],
+                "model_scale": [model_scale],
+                "model_scale_method": [model_scale_method],
+                "num_params": [total_trainable_params],
+                "depth": [hyp['net']['num_blocks']],
+                "width": [hyp['net']['residual_depth']],
                 "seed": [seed],
                 "run_num": [run_num+1],
                 "train_loss": [str(train_losses)],
@@ -790,6 +807,8 @@ def main():
                 else:
                     with open(args.savefile, 'ab') as f:
                         df.write_csv(f, include_header=False)
+            
+            seed += 1
 
 
 if __name__ == "__main__":
