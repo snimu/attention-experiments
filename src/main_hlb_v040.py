@@ -18,6 +18,7 @@ import functools
 from functools import partial
 import subprocess
 
+import rich
 import zipfile
 import math
 import os
@@ -30,6 +31,8 @@ from torch import nn
 
 # This seems like one of the best choices right now for a fast/lightweight/simple tokenizer.
 import tiktoken
+
+print = rich.print
 
 
 ################
@@ -734,6 +737,8 @@ def get_args_() -> argparse.Namespace:
     args.linear = [bool(i) for i in args.linear]
     args.use_x_norm = [bool(i) for i in args.use_x_norm]
     args.use_qk_norm = [bool(i) for i in args.use_qk_norm]
+
+    print(args.__dict__)
 
     return args
 
