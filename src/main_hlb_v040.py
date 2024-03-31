@@ -696,7 +696,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("-s", "--save", action="store_true", help="Save the model.")
     parser.add_argument("--append", action="store_true", help="Append the results to a file.")
     parser.add_argument("--savefile", type=str, default="results_040.csv", help="Save the results to a file.")
-    parser.add_argument("--num_tries", type=int, default=1, help="Number of tries to train the model.")
+    parser.add_argument("--num_runs", type=int, default=1, help="Number of runs to run each experiment for.")
     parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps to train the model.")
     parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs to train the model.")
     parser.add_argument("--num_tokens", type=int, default=int(1e12), help="Number of tokens used to train the model.")
