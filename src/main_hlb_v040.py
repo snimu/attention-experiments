@@ -128,6 +128,8 @@ def change_model_scale(scale, method: Literal["depth", "width", "both"] = "both"
         hyp['net']['num_blocks']     = round(8 * math.log2(1.+scale))
     else:
         raise ValueError(f"method must be one of 'depth', 'width', or 'both', not {method}")
+    
+    print(f"\nChanging model scale.\n{hyp['net']['residual_depth']} residual depth\n{hyp['net']['num_blocks']} blocks\n{model_scale} model scale\n")
 
 
 def change_token_capacity(factor: float):
