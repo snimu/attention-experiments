@@ -448,7 +448,7 @@ def grow_sequence_length(old_length, old_batchsize):
 #          Logging           #
 ##############################
 
-variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'microbatch_steps', 'total_secs']
+variables_to_log = ['epoch', 'curr_step', 'train_loss', 'val_loss', 'val_pplx', 'train_acc', 'val_acc', 'grad_norm', 'mubatch_steps', 'total_secs']
 # define the printing function and print the column heads
 def print_training_details(columns_list, separator_left='  ', separator_right='  |', column_labels_only=False, is_final_entry=False):
     output_line = "|" # start with the left bar
@@ -517,8 +517,8 @@ def train(**kwargs):
 
     # Microbatch growing parameters
     # Leaving this hardcoded for now for simplicity, this helps keep the learning process stable.
-    microbatch_steps = 0. # The noninteger estimate of microbatches required based upon the grad norm (sampled by dithering at each step.)
-    discrete_sampled_microbatch_steps = max(1, int(microbatch_steps))
+    mubatch_steps = 0. # The noninteger estimate of microbatches required based upon the grad norm (sampled by dithering at each step.)
+    discrete_sampled_mubatch_steps = max(1, int(mubatch_steps))
 
     # Start at the initial length and maximum allowable batchsize. The batchsize is adjusted so that we see roughly the same number of tokens per batch. This means that shorter sequence lengths will have much larger batch sizes.
     curr_length     = hyp['misc']['sequence_length']['initial']
@@ -608,11 +608,11 @@ def train(**kwargs):
 
         loss = loss_fn(outputs.flatten(0, 1), targets.flatten(0, 1))
 
-        loss.div(discrete_sampled_microbatch_steps).backward()
+        loss.div(discrete_sampled_mubatch_steps).backward()
         tokens_seen += curr_batchsize * curr_length
 
         # Quick non-eval summary every N training steps, at the end of every microbatch group, if we are not doing a _full eval_ here.
-        if curr_step % 10 == 0 and curr_microbatch_step % discrete_sampled_microbatch_steps == 0 and not curr_step % hyp['opt']['eval_every'] == 0:
+        if curr_step % 10 == 0 and curr_microbatch_step % discrete_sampled_mubatch_steps == 0 and not curr_step % hyp['opt']['eval_every'] == 0:
             train_acc          = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss         = loss.detach().cpu().item()
             train_summary_vars = {'epoch': tokens_seen//len(data['train']), 'curr_step': curr_step, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm}
@@ -627,7 +627,7 @@ def train(**kwargs):
                 break
 
         # Once we've accumulated steps over all of our microbatches, take a single full-batchsize step.
-        if curr_microbatch_step % discrete_sampled_microbatch_steps == 0:
+        if curr_microbatch_step % discrete_sampled_mubatch_steps == 0:
             # Step the optimizer, then scheduler
             opt.step()
 
@@ -650,14 +650,14 @@ def train(**kwargs):
                 ratio_diff          = grad_norm_per_param/(grad_norm_target)
 
                 # Update the fractional number of steps based on the % difference between the grad norm and expected grad norm.
-                microbatch_steps *= 1. + (hyp['opt']['microbatch']['sample_every'] * hyp['opt']['microbatch']['scale_lr'] * (ratio_diff - 1))
-                microbatch_steps  = max(microbatch_steps, 1e-1) # Clamp to keep this from going to zero, so that we can bounce back if needed
+                mubatch_steps *= 1. + (hyp['opt']['microbatch']['sample_every'] * hyp['opt']['microbatch']['scale_lr'] * (ratio_diff - 1))
+                mubatch_steps  = max(mubatch_steps, 1e-1) # Clamp to keep this from going to zero, so that we can bounce back if needed
 
             # simple bernoulli dithering with probabilities based on how close we are to each integer
-            base, dither_prob = divmod(microbatch_steps, 1)
+            base, dither_prob = divmod(mubatch_steps, 1)
 
-            # Randomly sample next accumulate steps to use. This is the dithered operation, the 'microbatch_steps' is the noninteger accumulator between steps.
-            discrete_sampled_microbatch_steps = max(1, int(base + torch.bernoulli(torch.tensor(dither_prob)).item())) # bernoulli via torch to save an unnecesary import :)
+            # Randomly sample next accumulate steps to use. This is the dithered operation, the 'mubatch_steps' is the noninteger accumulator between steps.
+            discrete_sampled_mubatch_steps = max(1, int(base + torch.bernoulli(torch.tensor(dither_prob)).item())) # bernoulli via torch to save an unnecesary import :)
 
             opt.zero_grad()
 
