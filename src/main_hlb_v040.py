@@ -117,6 +117,12 @@ def change_model_scale(scale):
     hyp['net']['num_blocks']     = round(8 * math.log2(1.+scale))
 
 
+def change_token_capacity(factor: float):
+    global tokens_per_batch_capacity, gpu_token_capacity, model_scale
+    gpu_token_capacity = int(114688 * factor)
+    tokens_per_batch_capacity = math.floor(gpu_token_capacity / (1.52174 + .482 * model_scale**(.87)))
+
+
 #############################################
 #                Dataloader                 #
 #############################################
@@ -695,6 +701,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs to train the model.")
     parser.add_argument("--num_tokens", type=int, default=int(1e12), help="Number of tokens used to train the model.")
     parser.add_argument("--model_scale", type=float, default=1.0, nargs="+", help="Scale the model size.")
+    parser.add_argument("--token_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
     parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
     parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
     parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
@@ -716,6 +723,7 @@ def get_args_() -> argparse.Namespace:
 def main():
     args = get_args_()
 
+    change_token_capacity(args.token_factor)
     settings = list(itertools.product(args.model_scale, args.linear, args.use_x_norm, args.use_qk_norm))
     crnt_run_global = 0
 
