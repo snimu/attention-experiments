@@ -518,6 +518,7 @@ def train(**kwargs):
 
     # Validation parameters
     val_loss, val_acc, val_pplx = None, None, None
+    epoch = 0
 
     # Get network
     net = make_net(**kwargs)
@@ -612,6 +613,9 @@ def train(**kwargs):
             tokens_seen_train.append(tokens_seen)
             epochs_train.append(tokens_seen//len(data['train']))
 
+            if epoch >= kwargs["num_epochs_train"] or tokens_seen >= kwargs["num_tokens_train"]:
+                break
+
         # Once we've accumulated steps over all of our microbatches, take a single full-batchsize step.
         if curr_microbatch_step % discrete_sampled_microbatch_steps == 0:
             # Step the optimizer, then scheduler
@@ -678,8 +682,9 @@ def train(**kwargs):
                 is_final_eval = (curr_step >= hyp['opt']['total_train_steps']) # If we're at the end of training, add a line after the end of the run
                 print_training_details(format_for_table(variables_to_log, locals=locals()), is_final_entry=is_final_eval)
 
-                if epoch >= kwargs["num_epochs"] or tokens_seen >= kwargs["num_tokens"]:
+                if epoch >= kwargs["num_epochs_val"] or tokens_seen >= kwargs["num_tokens_val"]:
                     break
+
                 torch.cuda.synchronize()
                 starter.record()
                 net.train()
@@ -696,8 +701,10 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--savefile", type=str, default="results_040.csv", help="Save the results to a file.")
     parser.add_argument("--num_runs", type=int, default=1, help="Number of runs to run each experiment for.")
     parser.add_argument("--num_steps", type=int, default=1000, help="Number of steps to train the model.")
-    parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs to train the model.")
-    parser.add_argument("--num_tokens", type=int, default=int(1e12), help="Number of tokens used to train the model.")
+    parser.add_argument("--num_epochs_train", type=int, default=3, help="Number of epochs to train the model.")
+    parser.add_argument("--num_epochs_val", type=int, default=1, help="Number of epochs to validate the model.")
+    parser.add_argument("--num_tokens_train", type=int, default=int(1e12), help="Number of tokens used to train the model.")
+    parser.add_argument("--num_tokens_val", type=int, default=int(1e12), help="Number of tokens used to validate the model.")
     parser.add_argument("--model_scale", type=float, default=1.0, nargs="+", help="Scale the model size.")
     parser.add_argument("--token_capacity_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
     parser.add_argument("--seed", type=int, default=100, help="Seed for the random number generator.")
@@ -750,8 +757,10 @@ def main():
                 use_x_norm=use_x_norm, 
                 use_qk_norm=use_qk_norm, 
                 num_steps=args.num_steps,
-                num_epochs=args.num_epochs, 
-                num_tokens=args.num_tokens,
+                num_epochs_train=args.num_epochs_train,
+                num_epochs_val=args.num_epochs_val, 
+                num_tokens_train=args.num_tokens_train,
+                num_tokens_val=args.num_tokens_val
             )
             results = {
                 "num_params": [total_trainable_params],
