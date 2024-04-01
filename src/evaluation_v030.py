@@ -313,16 +313,16 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
 ) -> None:
     settings = get_unique_settings(
         file, 
-        targets=["use_x_norm", "use_qkv_norm", "use_qk_norm"], 
+        targets=["use_x_norm", "use_qk_norm"], 
         attn_type=attn_type
     )
     colors = generate_distinct_colors(len(settings))
-    for (attn_type, use_x_norm, use_qkv_norm, use_qk_norm), color in zip(settings, colors, strict=True):
+    for (attn_type, use_x_norm, use_qk_norm), color in zip(settings, colors, strict=True):
         xs, ys, avg_y = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             use_x_norm=use_x_norm,
-            use_qkv_norm=use_qkv_norm,
+            use_qkv_norm=False,
             use_qk_norm=use_qk_norm,
             logit_scalar=logit_scalar,
             to_plot=to_plot,
@@ -331,8 +331,6 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
         label = f"{attn_type}"
         if use_x_norm:
             label += " x-norm"
-        if use_qkv_norm:
-            label += " qkv-norm"
         if use_qk_norm:
             label += " qk-norm"
         mask = xs >= from_step
@@ -473,16 +471,16 @@ def plot_metric_variance(
 ) -> None:
     settings = get_unique_settings(
         file, 
-        targets=["use_x_norm", "use_qkv_norm", "use_qk_norm"], 
+        targets=["use_x_norm", "use_qk_norm"], 
         attn_type=attn_type
     )
     colors = generate_distinct_colors(len(settings))
-    for (attn_type, use_x_norm, use_qkv_norm, use_qk_norm), color in zip(settings, colors):
+    for (attn_type, use_x_norm, use_qk_norm), color in zip(settings, colors):
         xs, ys, avg_y = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             use_x_norm=use_x_norm,
-            use_qkv_norm=use_qkv_norm,
+            use_qkv_norm=False,
             use_qk_norm=use_qk_norm,
             logit_scalar="sqrt_dh",
             to_plot=to_plot,
@@ -491,8 +489,6 @@ def plot_metric_variance(
         label = f"{attn_type}"
         if use_x_norm:
             label += " x-norm"
-        if use_qkv_norm:
-            label += " qkv-norm"
         if use_qk_norm:
             label += " qk-norm"
         plt.plot(xs[xs >= from_step], np.std(ys, axis=0)[xs >= from_step], label=label, color=color)
