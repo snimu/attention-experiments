@@ -35,6 +35,7 @@ def load_xs_ys_avg_y(
         use_x_norm: bool | None = None,
         use_qkv_norm: bool | None = None,
         use_qkv_weight: bool | None = None,
+        use_qk_norm: bool | None = None,
         identity_weight: float | None = None,
         residual_depth: int | None = None,
         logit_scalar: str | None = None,
@@ -59,6 +60,8 @@ def load_xs_ys_avg_y(
         filters &= (pl.col("use_qkv_norm") == use_qkv_norm)
     if use_qkv_weight is not None:
         filters &= (pl.col("use_qkv_weight") == use_qkv_weight)
+    if use_qk_norm is not None:
+        filters &= (pl.col("use_qk_norm") == use_qk_norm)
     if residual_depth is not None:
         filters &= (pl.col("residual_depth") == residual_depth)
     if logit_scalar is not None:
@@ -310,16 +313,17 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
 ) -> None:
     settings = get_unique_settings(
         file, 
-        targets=["use_x_norm", "use_qkv_norm"], 
+        targets=["use_x_norm", "use_qkv_norm", "use_qk_norm"], 
         attn_type=attn_type
     )
     colors = generate_distinct_colors(len(settings))
-    for (attn_type, use_x_norm, use_qkv_norm), color in zip(settings, colors, strict=True):
+    for (attn_type, use_x_norm, use_qkv_norm, use_qk_norm), color in zip(settings, colors, strict=True):
         xs, ys, avg_y = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             use_x_norm=use_x_norm,
             use_qkv_norm=use_qkv_norm,
+            use_qk_norm=use_qk_norm,
             logit_scalar=logit_scalar,
             to_plot=to_plot,
             plot_over=plot_over,
@@ -329,6 +333,8 @@ def plot_llm_1000_steps_100_tries_by_norm_position(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
+        if use_qk_norm:
+            label += " qk-norm"
         mask = xs >= from_step
         if show_all_plots:
             for y in ys:
@@ -467,16 +473,17 @@ def plot_metric_variance(
 ) -> None:
     settings = get_unique_settings(
         file, 
-        targets=["use_x_norm", "use_qkv_norm"], 
+        targets=["use_x_norm", "use_qkv_norm", "use_qk_norm"], 
         attn_type=attn_type
     )
     colors = generate_distinct_colors(len(settings))
-    for (attn_type, use_x_norm, use_qkv_norm), color in zip(settings, colors):
+    for (attn_type, use_x_norm, use_qkv_norm, use_qk_norm), color in zip(settings, colors):
         xs, ys, avg_y = load_xs_ys_avg_y(
             file=file,
             attn_type=attn_type,
             use_x_norm=use_x_norm,
             use_qkv_norm=use_qkv_norm,
+            use_qk_norm=use_qk_norm,
             logit_scalar="sqrt_dh",
             to_plot=to_plot,
             plot_over=plot_over,
@@ -486,6 +493,8 @@ def plot_metric_variance(
             label += " x-norm"
         if use_qkv_norm:
             label += " qkv-norm"
+        if use_qk_norm:
+            label += " qk-norm"
         plt.plot(xs[xs >= from_step], np.std(ys, axis=0)[xs >= from_step], label=label, color=color)
     plt.xlabel(plot_over)
     plt.ylabel("Standard deviation")
@@ -861,11 +870,12 @@ def find_best_attn_setting_diffusion(file: str) -> None:
 
 if __name__ == "__main__":
     to_plot_list = ["val_pplx"]
+    plot_over = "epoch"
     from_step_list = [0]
     attn_types_list = ["vanilla"]
     save = False
-    file_1000 = "../results/results_llm_1000_steps_100_tries_sqrt_dh.csv"
-    file_10e = "../results/results_llm_10_epochs_10_tries_sqrt_dh.csv"
+    file_1000 = "../results/results_v030_1000_steps_100_tries_sqrt_dh.csv"
+    file_10e = "../results/results_v030_10_epochs_10_tries_sqrt_dh.csv"
     files = [file_1000, file_10e]
 
     # plot_llm_1000_steps_100_tries_by_norm_position_multiplot(
@@ -885,14 +895,14 @@ if __name__ == "__main__":
             file=file,
             attn_type=attn_type, 
             to_plot=to_plot,
-            plot_over="epoch",
+            plot_over=plot_over,
             show_all_plots=False,
             from_step=from_step,
             save=save,
             logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
         )
         print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
-        plot_metric_variance(file=file_1000, to_plot=to_plot, from_step=from_step, save=save)
+        plot_metric_variance(file=file, to_plot=to_plot, from_step=from_step, save=save, plot_over=plot_over)
     # for to_plot in ("val_loss", "train_loss"):
     #     print(f"Plotting {to_plot} for vanilla from step 0")
     #     get_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot, from_step=800)
