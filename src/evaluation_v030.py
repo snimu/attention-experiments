@@ -865,7 +865,7 @@ def find_best_attn_setting_diffusion(file: str) -> None:
     
 
 if __name__ == "__main__":
-    to_plot_list = ["val_pplx"]
+    to_plot_list = ["val_acc"]
     plot_over = "epoch"
     from_step_list = [0]
     attn_types_list = ["vanilla"]
