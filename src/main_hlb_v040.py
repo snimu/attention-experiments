@@ -138,6 +138,11 @@ def change_token_capacity(factor: float):
     tokens_per_batch_capacity = math.floor(gpu_token_capacity / (1.52174 + .482 * model_scale**(.87)))
 
 
+def change_total_train_steps(steps: int):
+    global hyp
+    hyp['opt']['total_train_steps'] = steps
+
+
 #############################################
 #                Dataloader                 #
 #############################################
@@ -749,6 +754,7 @@ def main():
     args = get_args_()
 
     change_token_capacity(args.token_capacity_factor)
+    change_total_train_steps(args.num_steps)
     settings = list(itertools.product(
         args.model_scale, args.model_scale_method, args.linear, args.use_x_norm, args.use_qk_norm
     ))
