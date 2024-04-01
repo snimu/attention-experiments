@@ -22,7 +22,10 @@ def close_plt() -> None:
 
 
 def series_to_array(series: pl.Series) -> np.ndarray:
-    return np.array(ast.literal_eval(series[0]))
+    try:
+        return np.array(ast.literal_eval(series[0]))
+    except SyntaxError:
+        return np.array(ast.literal_eval(series))
 
 
 def load_xs_ys_avg_y(
@@ -185,7 +188,6 @@ def generate_distinct_colors(n):
 
 def plot_results_compare_norms(
         file: str,
-        linear: bool = False,
         depth: int | None = None,
         width: int | None = None,
         model_scale: float | None = None,
@@ -199,14 +201,14 @@ def plot_results_compare_norms(
         or (model_scale is not None and model_scale_method is not None)
     ), "Must specify depth & width or model scale & method"
 
-    settings = get_unique_settings(file, ["use_qk_norm", "use_x_norm"])
+    settings = get_unique_settings(file, ["use_qk_norm", "linear"])
     colors = generate_distinct_colors(len(settings))
 
-    for color, (use_qk_norm, use_x_norm) in zip(colors, settings, strict=True):
+    for color, (use_qk_norm, linear) in zip(colors, settings, strict=True):
         xs, ys, avg_ys = load_xs_ys_avg_y(
             file,
             linear=linear,
-            use_x_norm=use_x_norm,
+            use_x_norm=True,
             use_qk_norm=use_qk_norm,
             depth=depth,
             width=width,
@@ -220,13 +222,13 @@ def plot_results_compare_norms(
             for y in ys:
                 plt.plot(xs, y, color=color, alpha=0.1)
 
-        plt.plot(xs, avg_ys, color=color, label=f"qk_norm={use_qk_norm}, x_norm={use_x_norm}")
+        plt.plot(xs, avg_ys, color=color, label=f"{use_qk_norm=}, {linear=}")
 
     plt.xlabel(plot_over)
     plt.ylabel(to_plot)
     plt.legend()
     plt.tight_layout()
-    plt.grit()
+    plt.grid()
 
     plt.show()
 
@@ -234,7 +236,6 @@ def plot_results_compare_norms(
 if __name__ == "__main__":
     plot_results_compare_norms(
         "../results/results_v040_1000_steps_10_tries_sqrt_dh.csv",
-        linear=True,
         depth=8,
         width=384,
     )
