@@ -318,7 +318,7 @@ class SpeedyLangNet(nn.Module):
 def make_attn(num_dim, **kwargs):
     return LatentAttentionBlock(
         num_dim=num_dim,
-        linear_value=kwargs["linear"],
+        linear_value=kwargs["linear_value"],
         use_x_norm=kwargs["use_x_norm"],
         use_qk_norm=kwargs["use_qk_norm"],
         use_all_norm=kwargs["use_all_norm"],
@@ -701,7 +701,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--model_scale_method", type=str, choices=["depth", "width", "both"], nargs="+", default="both", help="Scale the model size using model depth, width, or both.")
     parser.add_argument("--token_capacity_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
     parser.add_argument("--seed", type=int, default=100, help="Seed for the random number generator.")
-    parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
+    parser.add_argument("--linear_value", type=int, default=0, nargs="+", help="Use linear attention blocks.")
     parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
     parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
     parser.add_argument("--use_all_norm", type=int, default=0, nargs="+", help="Use LayerNorm for Q, K, V, and MLP outputs.")
@@ -711,13 +711,13 @@ def get_args_() -> argparse.Namespace:
 
     args.model_scale = [args.model_scale] if isinstance(args.model_scale, float) else args.model_scale
     args.model_scale_method = [args.model_scale_method] if isinstance(args.model_scale_method, str) else args.model_scale_method
-    args.linear = [args.linear] if isinstance(args.linear, int) else args.linear 
+    args.linear_value = [args.linear_value] if isinstance(args.linear_value, int) else args.linear_value 
     args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, int) else args.use_x_norm
     args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.use_qk_norm
     args.use_all_norm = [args.use_all_norm] if isinstance(args.use_all_norm, int) else args.use_all_norm
     args.embedding_type = [args.embedding_type] if isinstance(args.embedding_type, str) else args.embedding_type
 
-    args.linear = [bool(i) for i in args.linear]
+    args.linear_value = [bool(i) for i in args.linear_value]
     args.use_x_norm = [bool(i) for i in args.use_x_norm]
     args.use_qk_norm = [bool(i) for i in args.use_qk_norm]
     args.use_all_norm = [bool(i) for i in args.use_all_norm]
@@ -733,17 +733,17 @@ def main():
     change_total_train_steps(args.num_steps)
     settings = list(itertools.product(
         args.model_scale, args.model_scale_method, 
-        args.linear, args.use_x_norm, args.use_qk_norm, args.use_all_norm,
+        args.linear_value, args.use_x_norm, args.use_qk_norm, args.use_all_norm,
         args.embedding_type,
     ))
     crnt_run_global = 0
 
     for setting_num, (
-            model_scale, model_scale_method, linear, use_x_norm, use_qk_norm, use_all_norm, embedding_type
+            model_scale, model_scale_method, linear_value, use_x_norm, use_qk_norm, use_all_norm, embedding_type
     ) in enumerate(settings):
         change_model_scale(model_scale, model_scale_method)
         net = make_net(
-            linear=linear, 
+            linear=linear_value, 
             use_x_norm=use_x_norm, 
             use_qk_norm=use_qk_norm,
             use_all_norm=use_all_norm,
@@ -757,7 +757,7 @@ def main():
             torch.manual_seed(seed)
             crnt_run_global += 1
             feedback = f"\nSetting {setting_num+1}/{len(settings)} | Run {run_num+1}/{args.num_runs} | Global Run {crnt_run_global}/{args.num_runs*len(settings)}"
-            feedback += f"\n{model_scale=} | {model_scale_method=} | {linear=} | {use_x_norm=} | {use_qk_norm=} | {embedding_type=}\n"
+            feedback += f"\n{model_scale=} | {model_scale_method=} | {linear_value=} | {use_x_norm=} | {use_qk_norm=} | {embedding_type=}\n"
             separator = ":" * max(len(line) for line in feedback.split("\n"))
             feedback = separator + feedback + separator
             print(f"\n{feedback}\n")
@@ -769,7 +769,7 @@ def main():
                     tokens_seen_train, tokens_seen_val, 
                     epochs_train, epochs_val
             ) = train(
-                linear=linear, 
+                linear=linear_value, 
                 use_x_norm=use_x_norm, 
                 use_qk_norm=use_qk_norm, 
                 use_all_norm=use_all_norm,
@@ -781,7 +781,7 @@ def main():
                 num_tokens_val=args.num_tokens_val,
             )
             results = {
-                "linear": [linear],
+                "linear": [linear_value],  # save as linear for historic reasons
                 "use_x_norm": [use_x_norm],
                 "use_qk_norm": [use_qk_norm],
                 "use_all_norm": [use_all_norm],
