@@ -757,7 +757,15 @@ def main():
             torch.manual_seed(seed)
             crnt_run_global += 1
             feedback = f"\nSetting {setting_num+1}/{len(settings)} | Run {run_num+1}/{args.num_runs} | Global Run {crnt_run_global}/{args.num_runs*len(settings)}"
-            feedback += f"\n{model_scale=} | {model_scale_method=} | {linear_value=} | {use_x_norm=} | {use_qk_norm=} | {embedding_type=}\n"
+            feedback += (
+                f"\n  {model_scale=}"
+                f"\n  {model_scale_method=}"
+                f"\n  {linear_value=}"
+                f"\n  {use_x_norm=}"
+                f"\n  {use_qk_norm=}"
+                f"\n  {use_all_norm=}"
+                f"\n  {embedding_type=}\n"
+            )
             separator = ":" * max(len(line) for line in feedback.split("\n"))
             feedback = separator + feedback + separator
             print(f"\n{feedback}\n")
