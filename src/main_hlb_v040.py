@@ -223,6 +223,7 @@ class LatentAttentionBlock(nn.Module):
             num_dim,
             use_x_norm: bool,
             use_qk_norm: bool,
+            use_all_norm: bool,
             embedding_type: Literal["rotary", "learned"] = "learned",
     ):
         super().__init__()
@@ -235,6 +236,7 @@ class LatentAttentionBlock(nn.Module):
         # Main layer weights
         self.x_norm  = nn.LayerNorm(num_dim, bias=False) if use_x_norm else nn.Identity()
         self.use_qk_norm = use_qk_norm
+        self.use_all_norm = use_all_norm
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
@@ -259,7 +261,9 @@ class LatentAttentionBlock(nn.Module):
         x = self.x_norm(x)
 
         # Fused into one kernel for memory+speed/etc
-        query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
+        all_results = F.linear(x, self.expand)
+        all_results = F.layer_norm(all_results, (all_results.shape[-1],)) if self.use_all_norm else all_results
+        query, key, linear, pre_gelu = all_results.split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
         query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
         key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
 
@@ -291,6 +295,7 @@ class LatentAttentionBlockLinear(nn.Module):
             num_dim,
             use_x_norm: bool,
             use_qk_norm: bool,
+            use_all_norm: bool,
             embedding_type: Literal["rotary", "learned"] = "learned",
     ):
         super().__init__()
@@ -303,6 +308,7 @@ class LatentAttentionBlockLinear(nn.Module):
         # Main layer weights
         self.x_norm  = nn.LayerNorm(num_dim, bias=False) if use_x_norm else nn.Identity()
         self.use_qk_norm = use_qk_norm
+        self.use_all_norm = use_all_norm
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
@@ -327,7 +333,9 @@ class LatentAttentionBlockLinear(nn.Module):
         x = self.x_norm(x)
 
         # Fused into one kernel for memory+speed/etc
-        query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
+        all_results = F.linear(x, self.expand)
+        all_results = F.layer_norm(all_results, (all_results.shape[-1],)) if self.use_all_norm else all_results
+        query, key, linear, pre_gelu = all_results.split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
         query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
         key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
 
@@ -375,10 +383,14 @@ class SpeedyLangNet(nn.Module):
 
 
 def make_attn(num_dim, **kwargs):
-    if kwargs["linear"]:
-        return LatentAttentionBlockLinear(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"], kwargs["embedding_type"])
-    else:
-        return LatentAttentionBlock(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"], kwargs["embedding_type"])
+    new_kwargs = {
+        "num_dim": num_dim,
+        "use_x_norm": kwargs["use_x_norm"],
+        "use_qk_norm": kwargs["use_qk_norm"],
+        "use_all_norm": kwargs["use_all_norm"],
+        "embedding_type": kwargs["embedding_type"],
+    }
+    return LatentAttentionBlockLinear(**new_kwargs) if kwargs["linear"] else LatentAttentionBlock(**new_kwargs)
 
 
 def make_net(**kwargs):
@@ -759,6 +771,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
     parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
     parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
+    parser.add_argument("--use_all_norm", type=int, default=0, nargs="+", help="Use LayerNorm for Q, K, V, and MLP outputs.")
     parser.add_argument("--embedding_type", type=str, default="learned", nargs="+", choices=["rotary", "learned"], help="Type of positional embedding to use.")
 
     args = parser.parse_args()
@@ -768,11 +781,13 @@ def get_args_() -> argparse.Namespace:
     args.linear = [args.linear] if isinstance(args.linear, int) else args.linear 
     args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, int) else args.use_x_norm
     args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.use_qk_norm
+    args.use_all_norm = [args.use_all_norm] if isinstance(args.use_all_norm, int) else args.use_all_norm
     args.embedding_type = [args.embedding_type] if isinstance(args.embedding_type, str) else args.embedding_type
 
     args.linear = [bool(i) for i in args.linear]
     args.use_x_norm = [bool(i) for i in args.use_x_norm]
     args.use_qk_norm = [bool(i) for i in args.use_qk_norm]
+    args.use_all_norm = [bool(i) for i in args.use_all_norm]
 
     print(args.__dict__)
 
@@ -785,16 +800,22 @@ def main():
     change_total_train_steps(args.num_steps)
     settings = list(itertools.product(
         args.model_scale, args.model_scale_method, 
-        args.linear, args.use_x_norm, args.use_qk_norm,
+        args.linear, args.use_x_norm, args.use_qk_norm, args.use_all_norm,
         args.embedding_type,
     ))
     crnt_run_global = 0
 
     for setting_num, (
-            model_scale, model_scale_method, linear, use_x_norm, use_qk_norm, embedding_type
+            model_scale, model_scale_method, linear, use_x_norm, use_qk_norm, use_all_norm, embedding_type
     ) in enumerate(settings):
         change_model_scale(model_scale, model_scale_method)
-        net = make_net(linear=linear, use_x_norm=use_x_norm, use_qk_norm=use_qk_norm, embedding_type=embedding_type)
+        net = make_net(
+            linear=linear, 
+            use_x_norm=use_x_norm, 
+            use_qk_norm=use_qk_norm,
+            use_all_norm=use_all_norm,
+            embedding_type=embedding_type,
+        )
         num_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
         del net
         change_token_capacity(args.token_capacity_factor, num_params)
@@ -818,6 +839,7 @@ def main():
                 linear=linear, 
                 use_x_norm=use_x_norm, 
                 use_qk_norm=use_qk_norm, 
+                use_all_norm=use_all_norm,
                 embedding_type=embedding_type,
                 num_steps=args.num_steps,
                 num_epochs_train=args.num_epochs_train,
@@ -829,6 +851,7 @@ def main():
                 "linear": [linear],
                 "use_x_norm": [use_x_norm],
                 "use_qk_norm": [use_qk_norm],
+                "use_all_norm": [use_all_norm],
                 "embedding_type": [embedding_type],
                 "model_scale": [model_scale],
                 "model_scale_method": [model_scale_method],
