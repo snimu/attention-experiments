@@ -221,6 +221,7 @@ class LatentAttentionBlock(nn.Module):
     def __init__(
             self, 
             num_dim,
+            linear_value: bool,
             use_x_norm: bool,
             use_qk_norm: bool,
             use_all_norm: bool,
@@ -234,6 +235,7 @@ class LatentAttentionBlock(nn.Module):
         self.expand_dim = num_dim * hyp['net']['expand_factor']
 
         # Main layer weights
+        self.linear_value = linear_value
         self.x_norm  = nn.LayerNorm(num_dim, bias=False) if use_x_norm else nn.Identity()
         self.use_qk_norm = use_qk_norm
         self.use_all_norm = use_all_norm
@@ -274,80 +276,11 @@ class LatentAttentionBlock(nn.Module):
         geglu = linear * F.gelu(pre_gelu)
 
         # Partition between the input values and the v dim values
-        geglu_local, geglu_attention_value = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
-
-        # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
-        attention = F.scaled_dot_product_attention(query, key, geglu_attention_value, attn_mask=attn_mask)
-
-        # Output linear layer
-        out = F.linear(torch.cat([geglu_local, attention], dim=-1), self.project)
-
-        # Add to residual
-        x = residual + out
-
-        return x
-    
-
-class LatentAttentionBlockLinear(nn.Module):
-    """ Efficient fused latent-space attention block. Linear keys, queries, and values."""
-    def __init__(
-            self, 
-            num_dim,
-            use_x_norm: bool,
-            use_qk_norm: bool,
-            use_all_norm: bool,
-            embedding_type: Literal["rotary", "learned"] = "learned",
-    ):
-        super().__init__()
-        # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
-        self.dim        = num_dim
-        self.qk_dim     = self.dim//hyp['net']['qk_dim_div']
-        self.v_dim      = num_dim
-        self.expand_dim = num_dim * hyp['net']['expand_factor']
-
-        # Main layer weights
-        self.x_norm  = nn.LayerNorm(num_dim, bias=False) if use_x_norm else nn.Identity()
-        self.use_qk_norm = use_qk_norm
-        self.use_all_norm = use_all_norm
-        self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
-        self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
-
-        self.embedding_type = embedding_type
-        # Learnable linear positional encodings. Similar to but different than https://arxiv.org/abs/2108.12409
-        # Has a high lr mult applied to it so that each layer can learn its own attention scale.
-        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda')) if self.embedding_type == "learned" else None
-        self.rot_pos_emb = embeddings.Rotary(self.qk_dim).to('cuda') if self.embedding_type == "rotary" else None
-
-    def forward(self, x):
-        residual = x
-
-        if self.embedding_type == "learned":
-            # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
-            attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
-            cos_rot, sin_rot = None, None
+        if self.linear_value:
+            geglu_local, _ = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+            _, geglu_attention_value = pre_gelu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
         else:
-            attn_mask = causal_mask[:x.shape[1], :x.shape[1]]
-            cos_rot, sin_rot = self.rot_pos_emb(x)
-
-        # Shared LayerNorm for linear layers and attention
-        x = self.x_norm(x)
-
-        # Fused into one kernel for memory+speed/etc
-        all_results = F.linear(x, self.expand)
-        all_results = F.layer_norm(all_results, (all_results.shape[-1],)) if self.use_all_norm else all_results
-        query, key, linear, pre_gelu = all_results.split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
-        query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
-        key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
-
-        if self.embedding_type == "rotary":
-            query, key = embeddings.apply_rotary_pos_emb(query, key, cos_rot, sin_rot)
-    
-        # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
-        geglu = linear * F.gelu(pre_gelu)
-
-        # Partition between the input values and the v dim values
-        geglu_local, _ = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
-        _, geglu_attention_value = pre_gelu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
+            geglu_local, geglu_attention_value = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
 
         # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
         attention = F.scaled_dot_product_attention(query, key, geglu_attention_value, attn_mask=attn_mask)
@@ -383,14 +316,14 @@ class SpeedyLangNet(nn.Module):
 
 
 def make_attn(num_dim, **kwargs):
-    new_kwargs = {
-        "num_dim": num_dim,
-        "use_x_norm": kwargs["use_x_norm"],
-        "use_qk_norm": kwargs["use_qk_norm"],
-        "use_all_norm": kwargs["use_all_norm"],
-        "embedding_type": kwargs["embedding_type"],
-    }
-    return LatentAttentionBlockLinear(**new_kwargs) if kwargs["linear"] else LatentAttentionBlock(**new_kwargs)
+    return LatentAttentionBlock(
+        num_dim=num_dim,
+        linear_value=kwargs["linear"],
+        use_x_norm=kwargs["use_x_norm"],
+        use_qk_norm=kwargs["use_qk_norm"],
+        use_all_norm=kwargs["use_all_norm"],
+        embedding_type=kwargs["embedding_type"]
+    )
 
 
 def make_net(**kwargs):
