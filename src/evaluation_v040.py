@@ -65,7 +65,7 @@ def load_xs_ys_avg_y(
 
     df = pl.scan_csv(file).filter(filters).collect()
     df.sort("run_num")
-    arrays = [series_to_array(df[to_plot][run_num]) for run_num in df["run_num"].unique()]
+    arrays = [series_to_array(df[to_plot][i]) for i in range(len(df[to_plot]))]
 
     if plot_over == "step":
         return load_steps_ys_avg_ys(df, arrays, to_plot)
@@ -102,7 +102,7 @@ def load_epochs_ys_avg_ys(
         to_plot: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     epochs_str = "epochs_train" if "train" in to_plot else "epochs_val"
-    xs = [series_to_array(df[epochs_str][run_num]) for run_num in df["run_num"].unique()]
+    xs = [series_to_array(df[epochs_str][i]) for i in range(len(df[epochs_str]))]
     return interpolate_linearly(xs, arrays)
 
 
@@ -112,7 +112,7 @@ def load_tokens_ys_avg_ys(
         to_plot: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     tokens_str = "tokens_seen_train" if "train" in to_plot else "tokens_seen_val"
-    xs = [series_to_array(df[tokens_str][run_num]) for run_num in df["run_num"].unique()]
+    xs = [series_to_array(df[tokens_str][i]) for i in range(len(df[tokens_str]))]
     return interpolate_linearly(xs, arrays)
 
 
@@ -229,13 +229,183 @@ def plot_results_compare_norms(
     plt.legend()
     plt.tight_layout()
     plt.grid()
-
     plt.show()
+    close_plt()
+
+
+def plot_results_compare_depth_width(
+        file: str,
+        linear: bool = False,
+        use_x_norm: bool = True,
+        use_qk_norm: bool = False,
+        to_plot: str = "val_pplx",
+        plot_over: Literal["step", "epoch", "token"] = "epoch",
+        plot_all: bool = False,
+) -> None:
+    settings = get_unique_settings(file, ["depth", "width"])
+    colors = generate_distinct_colors(len(settings))
+
+    for color, (depth, width) in zip(colors, settings, strict=True):
+        xs, ys, avg_ys = load_xs_ys_avg_y(
+            file,
+            depth=depth,
+            width=width,
+            linear=linear,
+            use_x_norm=use_x_norm,
+            use_qk_norm=use_qk_norm,
+            to_plot=to_plot,
+            plot_over=plot_over,
+        )
+
+        if plot_all:
+            for y in ys:
+                plt.plot(xs, y, color=color, alpha=0.1)
+
+        plt.plot(xs, avg_ys, color=color, label=f"{depth=}, {width=}")
+
+    plt.title(f"Depth vs. Width ({linear=}, {use_x_norm=}, {use_qk_norm=})")
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
+    plt.legend()
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+    close_plt()
+
+
+def plot_results_compare_norms_and_parameters(
+        file: str,
+        num_param_counts: int = 3,
+        use_qk_norm: bool | None = None,
+        linear: bool | None = None,
+        to_plot: str = "val_pplx",
+        plot_over: Literal["step", "epoch", "token"] = "epoch",
+        plot_all: bool = False,
+) -> None:
+    assert num_param_counts > 1, (
+        "You want to compare by parameter count or what??? "
+        f"{num_param_counts} is not enough! Use at least 2."
+    )
+
+    settings_targets = []
+    if use_qk_norm is None:
+        settings_targets.append("use_qk_norm")
+    if linear is None:
+        settings_targets.append("linear")
+    
+    settings = get_unique_settings(file, settings_targets)
+    if use_qk_norm is not None:
+        settings = [(use_qk_norm, s[0]) for s in settings]
+    if linear is not None:
+        settings = [(s[0], linear) for s in settings]
+
+    colors = generate_distinct_colors(len(settings))
+
+    nums_params = pl.scan_csv(file).select("num_params").collect().unique().sort("num_params")["num_params"]
+    # Pick num_param_counts evenly spaced numbers from the list of unique num_params; must be contained in num_params!
+    nums_params_indices = np.linspace(0, len(nums_params)-1, num_param_counts).astype(int).tolist()
+    nums_params = [nums_params[i] for i in nums_params_indices]
+
+    linestyles = itertools.cycle(("-", "--", "-.", ":"))
+    for num_params, linestyle in zip(nums_params, linestyles, strict=False):
+        print(f"\n{num_params=}")
+        for color, (use_qk_norm_, linear_) in zip(colors, settings, strict=True):
+            print(f"{use_qk_norm_=}, {linear_=}")
+            xs, ys, avg_ys = load_xs_ys_avg_y(
+                file,
+                use_qk_norm=use_qk_norm_,
+                linear=linear_,
+                to_plot=to_plot,
+                num_params=num_params,
+                plot_over=plot_over,
+            )
+
+            if plot_all:
+                for y in ys:
+                    plt.plot(xs, y, color=color, linestyle=linestyle, alpha=0.1)
+
+            label = f"{num_params=}"
+            if use_qk_norm is None and use_qk_norm_:
+                label += ", qk_norm"
+            if linear is None:
+                label += ", linear value" if linear_ else ", nonlinear value"
+
+            plt.plot(xs, avg_ys, color=color, linestyle=linestyle, label=label)
+
+    title = f"Number of Parameters vs. {to_plot}"
+    if linear is not None:
+        title += " (linear value)" if linear else " (nonlinear value)"
+    if use_qk_norm is not None:
+        title += f" ({use_qk_norm=})"
+    plt.title(title)
+
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
+    plt.legend()
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+    close_plt()
 
 
 if __name__ == "__main__":
+    file1000steps = "../results/results_v040_1000_steps_10_tries_sqrt_dh.csv"
+    # UNIQUE DEPTHS & WIDTHS
+    # depth: 4, 5, 8, 13, 16
+    # width: 256, 384, 512, 640
+
+    # UNIQUE COMBINATIONS
+    # ┌───────┬───────┐
+    # │ depth ┆ width │
+    # │ ---   ┆ ---   │
+    # │ i64   ┆ i64   │
+    # ╞═══════╪═══════╡
+    # │ 4     ┆ 384   │
+    # │ 5     ┆ 256   │
+    # │ 8     ┆ 512   │
+    # │ 8     ┆ 256   │
+    # │ 8     ┆ 384   │
+    # │ 13    ┆ 640   │
+    # │ 16    ┆ 384   │
+    # └───────┴───────┘
+
+    # UNIQUE NUM_PARAMS
+    # num_params: 27_805_189, 29_034_760, 42_320_260, 42_321_796, 46_009_736, 53_385_616, 64_623_112, 97_678_093
+
+    # for depth in (4, 8, 16):
+    #     plot_results_compare_norms(
+    #         file=file1000steps,
+    #         depth=depth,
+    #         width=384,
+    #         plot_over="token",
+    #     )
+    # plot_results_compare_norms(
+    #     file=file1000steps,
+    #     depth=13,
+    #     width=384,
+    #     plot_over="token",
+    # )
+    # plot_results_compare_depth_width(
+    #     file=file1000steps,
+    #     linear=True,
+    #     use_x_norm=True,
+    #     use_qk_norm=False,
+    # )
+    # plot_results_compare_norms_and_parameters(
+    #     file=file1000steps,
+    #     num_param_counts=3,
+    #     linear=True,
+    #     to_plot="val_loss",
+    #     plot_over="token",
+    #     plot_all=False,
+    # )
+    
+
+    file10epochs = "../results/results_v040_10_epochs_5_tries_sqrt_dh.csv"
     plot_results_compare_norms(
-        "../results/results_v040_1000_steps_10_tries_sqrt_dh.csv",
-        depth=8,
+        file=file10epochs,
         width=384,
+        depth=8,
+        plot_over="epoch",
+        to_plot="val_pplx",
     )
