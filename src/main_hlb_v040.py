@@ -769,7 +769,7 @@ def main():
                     tokens_seen_train, tokens_seen_val, 
                     epochs_train, epochs_val
             ) = train(
-                linear=linear_value, 
+                linear_value=linear_value, 
                 use_x_norm=use_x_norm, 
                 use_qk_norm=use_qk_norm, 
                 use_all_norm=use_all_norm,
