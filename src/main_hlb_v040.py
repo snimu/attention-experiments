@@ -132,8 +132,10 @@ def change_model_scale(scale, method: Literal["depth", "width", "both"] = "both"
     print(f"\nChanging model scale.\n{hyp['net']['residual_depth']} residual depth\n{hyp['net']['num_blocks']} blocks\n{model_scale} model scale\n")
 
 
-def change_token_capacity(factor: float):
+def change_token_capacity(factor: float, num_params: int):
     global tokens_per_batch_capacity, gpu_token_capacity, model_scale
+    num_params_default = 46_009_736
+    factor = factor  *num_params_default / num_params
     gpu_token_capacity = int(114688 * factor)
     tokens_per_batch_capacity = math.floor(gpu_token_capacity / (1.52174 + .482 * model_scale**(.87)))
 
@@ -753,7 +755,6 @@ def get_args_() -> argparse.Namespace:
 def main():
     args = get_args_()
 
-    change_token_capacity(args.token_capacity_factor)
     change_total_train_steps(args.num_steps)
     settings = list(itertools.product(
         args.model_scale, args.model_scale_method, args.linear, args.use_x_norm, args.use_qk_norm
@@ -762,6 +763,10 @@ def main():
 
     for setting_num, (model_scale, model_scale_method, linear, use_x_norm, use_qk_norm) in enumerate(settings):
         change_model_scale(model_scale, model_scale_method)
+        net = make_net(linear=linear, use_x_norm=use_x_norm, use_qk_norm=use_qk_norm)
+        num_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
+        del net
+        change_token_capacity(args.token_capacity_factor, num_params)
         seed = args.seed
         for run_num in range(args.num_runs):
             torch.manual_seed(seed)
