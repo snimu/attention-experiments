@@ -31,6 +31,9 @@ from torch import nn
 
 # This seems like one of the best choices right now for a fast/lightweight/simple tokenizer.
 import tiktoken
+import einops
+
+import embeddings
 
 print = rich.print
 
@@ -220,6 +223,7 @@ class LatentAttentionBlock(nn.Module):
             num_dim,
             use_x_norm: bool,
             use_qk_norm: bool,
+            embedding_type: Literal["rotary", "learned"] = "learned",
     ):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
@@ -234,15 +238,22 @@ class LatentAttentionBlock(nn.Module):
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
+        self.embedding_type = embedding_type
         # Learnable linear positional encodings. Similar to but different than https://arxiv.org/abs/2108.12409
         # Has a high lr mult applied to it so that each layer can learn its own attention scale.
-        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda'))
+        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda')) if self.embedding_type == "learned" else None
+        self.rot_pos_emb = embeddings.Rotary(self.qk_dim).to('cuda') if self.embedding_type == "rotary" else None
 
     def forward(self, x):
         residual = x
 
-        # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
-        attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+        if self.embedding_type == "learned":
+            # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
+            attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+            cos_rot, sin_rot = None, None
+        else:
+            attn_mask = causal_mask[:x.shape[1], :x.shape[1]]
+            cos_rot, sin_rot = self.rot_pos_emb(x)
 
         # Shared LayerNorm for linear layers and attention
         x = self.x_norm(x)
@@ -251,6 +262,9 @@ class LatentAttentionBlock(nn.Module):
         query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
         query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
         key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
+
+        if self.embedding_type == "rotary":
+            query, key = embeddings.apply_rotary_pos_emb(query, key, cos_rot, sin_rot)
     
         # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
         geglu = linear * F.gelu(pre_gelu)
@@ -277,6 +291,7 @@ class LatentAttentionBlockLinear(nn.Module):
             num_dim,
             use_x_norm: bool,
             use_qk_norm: bool,
+            embedding_type: Literal["rotary", "learned"] = "learned",
     ):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
@@ -291,15 +306,22 @@ class LatentAttentionBlockLinear(nn.Module):
         self.expand  = nn.Parameter(.5 * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor']                               * torch.randn(2*self.qk_dim+2*self.expand_dim, self.dim))
         self.project = nn.Parameter(1. * 1./hyp['net']['residual_depth']**.5 * 1./hyp['net']['expand_factor'] * 1./hyp['net']['num_blocks'] * torch.randn((self.dim, self.expand_dim)))
 
+        self.embedding_type = embedding_type
         # Learnable linear positional encodings. Similar to but different than https://arxiv.org/abs/2108.12409
         # Has a high lr mult applied to it so that each layer can learn its own attention scale.
-        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda'))
+        self.position_bias_mult = nn.Parameter(torch.tensor(1., device='cuda')) if self.embedding_type == "learned" else None
+        self.rot_pos_emb = embeddings.Rotary(self.qk_dim).to('cuda') if self.embedding_type == "rotary" else None
 
     def forward(self, x):
         residual = x
 
-        # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
-        attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+        if self.embedding_type == "learned":
+            # Make additive attention mask, scaled by a learned mult for the position bias (lets us learn dynamic attention ranges per layer as needed)
+            attn_mask = torch.where(causal_mask[:x.shape[1], :x.shape[1]], F.softplus(self.position_bias_mult) * position_bias_base[:x.shape[1], :x.shape[1]], negative_infinity_matrix_base[:x.shape[1], :x.shape[1]])
+            cos_rot, sin_rot = None, None
+        else:
+            attn_mask = causal_mask[:x.shape[1], :x.shape[1]]
+            cos_rot, sin_rot = self.rot_pos_emb(x)
 
         # Shared LayerNorm for linear layers and attention
         x = self.x_norm(x)
@@ -308,6 +330,9 @@ class LatentAttentionBlockLinear(nn.Module):
         query, key, linear, pre_gelu = F.linear(x, self.expand).split((self.qk_dim, self.qk_dim, self.expand_dim, self.expand_dim), dim=-1)
         query = F.layer_norm(query, (query.shape[-1],)) if self.use_qk_norm else query
         key   = F.layer_norm(key,   (key.shape[-1],))  if self.use_qk_norm else key
+
+        if self.embedding_type == "rotary":
+            query, key = embeddings.apply_rotary_pos_emb(query, key, cos_rot, sin_rot)
     
         # Compute GeGLU (one portion of the channels this will stay locally, another will become the nonlinear value for attention)
         geglu = linear * F.gelu(pre_gelu)
@@ -351,9 +376,9 @@ class SpeedyLangNet(nn.Module):
 
 def make_attn(num_dim, **kwargs):
     if kwargs["linear"]:
-        return LatentAttentionBlockLinear(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"])
+        return LatentAttentionBlockLinear(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"], kwargs["embedding_type"])
     else:
-        return LatentAttentionBlock(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"])
+        return LatentAttentionBlock(num_dim, kwargs["use_x_norm"], kwargs["use_qk_norm"], kwargs["embedding_type"])
 
 
 def make_net(**kwargs):
@@ -734,6 +759,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--linear", type=int, default=0, nargs="+", help="Use linear attention blocks.")
     parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
     parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
+    parser.add_argument("--embedding_type", type=str, default="learned", nargs="+", choices=["rotary", "learned"], help="Type of positional embedding to use.")
 
     args = parser.parse_args()
 
@@ -742,6 +768,7 @@ def get_args_() -> argparse.Namespace:
     args.linear = [args.linear] if isinstance(args.linear, int) else args.linear 
     args.use_x_norm = [args.use_x_norm] if isinstance(args.use_x_norm, int) else args.use_x_norm
     args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.use_qk_norm
+    args.embedding_type = [args.embedding_type] if isinstance(args.embedding_type, str) else args.embedding_type
 
     args.linear = [bool(i) for i in args.linear]
     args.use_x_norm = [bool(i) for i in args.use_x_norm]
@@ -757,13 +784,17 @@ def main():
 
     change_total_train_steps(args.num_steps)
     settings = list(itertools.product(
-        args.model_scale, args.model_scale_method, args.linear, args.use_x_norm, args.use_qk_norm
+        args.model_scale, args.model_scale_method, 
+        args.linear, args.use_x_norm, args.use_qk_norm,
+        args.embedding_type,
     ))
     crnt_run_global = 0
 
-    for setting_num, (model_scale, model_scale_method, linear, use_x_norm, use_qk_norm) in enumerate(settings):
+    for setting_num, (
+            model_scale, model_scale_method, linear, use_x_norm, use_qk_norm, embedding_type
+    ) in enumerate(settings):
         change_model_scale(model_scale, model_scale_method)
-        net = make_net(linear=linear, use_x_norm=use_x_norm, use_qk_norm=use_qk_norm)
+        net = make_net(linear=linear, use_x_norm=use_x_norm, use_qk_norm=use_qk_norm, embedding_type=embedding_type)
         num_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
         del net
         change_token_capacity(args.token_capacity_factor, num_params)
@@ -772,7 +803,7 @@ def main():
             torch.manual_seed(seed)
             crnt_run_global += 1
             feedback = f"\nSetting {setting_num+1}/{len(settings)} | Run {run_num+1}/{args.num_runs} | Global Run {crnt_run_global}/{args.num_runs*len(settings)}"
-            feedback += f"\n{model_scale=} | {model_scale_method=} | {linear=} | {use_x_norm=} | {use_qk_norm=}\n"
+            feedback += f"\n{model_scale=} | {model_scale_method=} | {linear=} | {use_x_norm=} | {use_qk_norm=} | {embedding_type=}\n"
             separator = ":" * max(len(line) for line in feedback.split("\n"))
             feedback = separator + feedback + separator
             print(f"\n{feedback}\n")
@@ -787,16 +818,18 @@ def main():
                 linear=linear, 
                 use_x_norm=use_x_norm, 
                 use_qk_norm=use_qk_norm, 
+                embedding_type=embedding_type,
                 num_steps=args.num_steps,
                 num_epochs_train=args.num_epochs_train,
                 num_epochs_val=args.num_epochs_val, 
                 num_tokens_train=args.num_tokens_train,
-                num_tokens_val=args.num_tokens_val
+                num_tokens_val=args.num_tokens_val,
             )
             results = {
                 "linear": [linear],
                 "use_x_norm": [use_x_norm],
                 "use_qk_norm": [use_qk_norm],
+                "embedding_type": [embedding_type],
                 "model_scale": [model_scale],
                 "model_scale_method": [model_scale_method],
                 "num_params": [total_trainable_params],
