@@ -39,8 +39,9 @@ def load_xs_ys_avg_y(
         depth: int | None = None,
         width: int | None = None,
         num_params: int | None = None,
+        embedding_type: Literal["learned", "rotary"] | None = None,
         to_plot: str = "val_loss",
-        plot_over: Literal["step", "epoch", "token"] = "step",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "step",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load x, y, and average y from a CSV file."""
     assert to_plot in ("train_loss", "train_acc", "val_loss", "val_acc", "val_pplx"), f"Invalid to_plot: {to_plot}"
@@ -62,6 +63,8 @@ def load_xs_ys_avg_y(
         filters &= (pl.col("width") == width)
     if num_params is not None:
         filters &= (pl.col("num_params") == num_params)
+    if embedding_type is not None:
+        filters &= (pl.col("embedding_type") == embedding_type)
 
     df = pl.scan_csv(file).filter(filters).collect()
     df.sort("run_num")
@@ -73,6 +76,8 @@ def load_xs_ys_avg_y(
         return load_epochs_ys_avg_ys(df, arrays, to_plot)
     elif plot_over == "token":
         return load_tokens_ys_avg_ys(df, arrays, to_plot)
+    elif plot_over == "time_sec":
+        return load_time_ys_avg_ys(df, arrays, to_plot)
     else:
         raise ValueError(f"{plot_over} not a valid x-value")
 
@@ -113,6 +118,17 @@ def load_tokens_ys_avg_ys(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     tokens_str = "tokens_seen_train" if "train" in to_plot else "tokens_seen_val"
     xs = [series_to_array(df[tokens_str][i]) for i in range(len(df[tokens_str]))]
+    return interpolate_linearly(xs, arrays)
+
+
+def load_time_ys_avg_ys(
+        df: pl.DataFrame,
+        arrays: list[np.ndarray],
+        to_plot: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    assert "val" in to_plot, "Only validation data has time data"
+    time_str = "cumulative_time"
+    xs = [series_to_array(df[time_str][i]) for i in range(len(df[time_str]))]
     return interpolate_linearly(xs, arrays)
 
 
@@ -193,7 +209,7 @@ def plot_results_compare_norms(
         model_scale: float | None = None,
         model_scale_method: Literal["depth", "width", "both"] | None = None,
         to_plot: str = "val_pplx",
-        plot_over: Literal["step", "epoch", "token"] = "epoch",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
         plot_all: bool = False,
 ) -> None:
     assert (
@@ -239,7 +255,7 @@ def plot_results_compare_depth_width(
         use_x_norm: bool = True,
         use_qk_norm: bool = False,
         to_plot: str = "val_pplx",
-        plot_over: Literal["step", "epoch", "token"] = "epoch",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
         plot_all: bool = False,
 ) -> None:
     settings = get_unique_settings(file, ["depth", "width"])
@@ -279,7 +295,7 @@ def plot_results_compare_norms_and_parameters(
         use_qk_norm: bool | None = None,
         linear: bool | None = None,
         to_plot: str = "val_pplx",
-        plot_over: Literal["step", "epoch", "token"] = "epoch",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
         plot_all: bool = False,
 ) -> None:
     assert num_param_counts > 1, (
@@ -348,6 +364,55 @@ def plot_results_compare_norms_and_parameters(
     close_plt()
 
 
+def plot_results_compare_norms_and_embedding_type(
+        file: str,
+        depth: int | None = None,
+        width: int | None = None,
+        model_scale: float | None = None,
+        model_scale_method: Literal["depth", "width", "both"] | None = None,
+        to_plot: str = "val_pplx",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
+        plot_all: bool = False,
+) -> None:
+    assert (
+        (depth is not None and width is not None)
+        or (model_scale is not None and model_scale_method is not None)
+    ), "Must specify depth & width or model scale & method"
+
+    settings = get_unique_settings(file, ["use_qk_norm", "embedding_type"])
+    colors = generate_distinct_colors(len(settings))
+
+    for color, (use_qk_norm, embedding_type) in zip(colors, settings, strict=True):
+        xs, ys, avg_ys = load_xs_ys_avg_y(
+            file,
+            embedding_type=embedding_type,
+            linear=False,
+            use_x_norm=True,
+            use_qk_norm=use_qk_norm,
+            depth=depth,
+            width=width,
+            model_scale=model_scale,
+            model_scale_method=model_scale_method,
+            to_plot=to_plot,
+            plot_over=plot_over,
+        )
+
+        if plot_all:
+            for y in ys:
+                plt.plot(xs, y, color=color, alpha=0.1)
+
+        plt.plot(xs, avg_ys, color=color, label=f"{use_qk_norm=}, {embedding_type=}")
+
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
+    plt.legend()
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+    close_plt(
+)
+
+
 if __name__ == "__main__":
     file1000steps = "../results/results_v040_1000_steps_10_tries_sqrt_dh.csv"
     # UNIQUE DEPTHS & WIDTHS
@@ -406,6 +471,6 @@ if __name__ == "__main__":
         file=file10epochs,
         width=384,
         depth=8,
-        plot_over="epoch",
+        plot_over="token",
         to_plot="val_pplx",
     )
