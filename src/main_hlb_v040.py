@@ -743,7 +743,7 @@ def main():
     ) in enumerate(settings):
         change_model_scale(model_scale, model_scale_method)
         net = make_net(
-            linear=linear_value, 
+            linear_value=linear_value, 
             use_x_norm=use_x_norm, 
             use_qk_norm=use_qk_norm,
             use_all_norm=use_all_norm,
