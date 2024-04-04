@@ -136,9 +136,10 @@ def change_model_scale(scale, method: Literal["depth", "width", "both"] = "both"
 
 
 def change_token_capacity(factor: float, num_params: int):
-    global tokens_per_batch_capacity, gpu_token_capacity, model_scale
     num_params_default = 46_009_736
-    factor = factor * num_params_default / num_params if (num_params/num_params_default) > 1 else factor  # Reduce capacity if net is bigger than default, but don't increase it otherwise (avoid OOM errors)
+    if num_params > num_params_default:
+        factor = factor * num_params_default / num_params
+    global tokens_per_batch_capacity, gpu_token_capacity, model_scale
     gpu_token_capacity = int(114688 * factor)
     tokens_per_batch_capacity = math.floor(gpu_token_capacity / (1.52174 + .482 * model_scale**(.87)))
 
