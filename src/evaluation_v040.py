@@ -365,9 +365,11 @@ def plot_results_compare_norms_and_embedding_type(
         width: int | None = None,
         model_scale: float | None = None,
         model_scale_method: Literal["depth", "width", "both"] | None = None,
+        linear: bool = False,
         to_plot: str = "val_pplx",
         plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
         plot_all: bool = False,
+        loglog: bool = False,
 ) -> None:
     assert (
         (depth is not None and width is not None)
@@ -381,7 +383,7 @@ def plot_results_compare_norms_and_embedding_type(
         xs, ys, avg_ys = load_xs_ys_avg_y(
             file,
             embedding_type=embedding_type,
-            linear=False,
+            linear=linear,
             use_x_norm=True,
             use_qk_norm=use_qk_norm,
             depth=depth,
@@ -394,10 +396,26 @@ def plot_results_compare_norms_and_embedding_type(
 
         if plot_all:
             for y in ys:
-                plt.plot(xs, y, color=color, alpha=0.1)
+                if loglog:
+                    plt.loglog(xs, y, color=color, alpha=0.1)
+                else:
+                    plt.plot(xs, y, color=color, alpha=0.1)
 
-        plt.plot(xs, avg_ys, color=color, label=f"{use_qk_norm=}, {embedding_type=}")
+        if loglog:
+            plt.loglog(xs, avg_ys, color=color, label=f"{use_qk_norm=}, {embedding_type=}")
+        else:
+            plt.plot(xs, avg_ys, color=color, label=f"{use_qk_norm=}, {embedding_type=}")
 
+    scales = pl.scan_csv(file).filter(
+        (pl.col("linear") == linear)
+        & (pl.col("use_x_norm") == True)
+        & (pl.col("use_qk_norm") == use_qk_norm)
+        & ((pl.col("depth") == depth) if depth is not None else (pl.col("model_scale") == model_scale))
+        & ((pl.col("width") == width) if width is not None else (pl.col("model_scale_method") == model_scale_method))
+    ).select("depth", "width").collect()
+    num_blocks, width = scales["depth"][0], scales["width"][0]
+
+    plt.title(f"{num_blocks=}, {width=}")
     plt.xlabel(plot_over)
     plt.ylabel(to_plot)
     plt.legend()
@@ -406,6 +424,71 @@ def plot_results_compare_norms_and_embedding_type(
     plt.show()
     close_plt(
 )
+    
+
+def plot_results_compare_norms_scale(
+        file: str,
+        embedding_type: Literal["learned", "rotary"] = "rotary",
+        linear: bool = False,
+        use_x_norm: bool = True,
+        model_scale_method: Literal["depth", "width", "both"] | None = None,
+        to_plot: str = "val_pplx",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
+        plot_all: bool = False,
+        loglog: bool = False,
+) -> None:
+    settings_targets = ["use_qk_norm", "model_scale"]
+    if model_scale_method is None:
+        settings_targets.append("model_scale_method")
+    settings = get_unique_settings(file, settings_targets)
+    if model_scale_method is not None:
+        settings = [(use_qk_norm, model_scale, model_scale_method) for use_qk_norm, model_scale in settings]
+    colors = generate_distinct_colors(len(settings))
+
+    for color, (use_qk_norm, model_scale, model_scale_method) in zip(colors, settings, strict=True):
+        xs, ys, avg_ys = load_xs_ys_avg_y(
+            file,
+            embedding_type=embedding_type,
+            linear=linear,
+            use_x_norm=use_x_norm,
+            use_qk_norm=use_qk_norm,
+            model_scale=model_scale,
+            model_scale_method=model_scale_method,
+            to_plot=to_plot,
+            plot_over=plot_over,
+        )
+
+        if plot_all:
+            for y in ys:
+                if loglog:
+                    plt.loglog(xs, y, color=color, alpha=0.1)
+                else:
+                    plt.plot(xs, y, color=color, alpha=0.1)
+
+        scales = pl.scan_csv(file).filter(
+            (pl.col("linear") == linear)
+            & (pl.col("use_x_norm") == True)
+            & (pl.col("use_qk_norm") == use_qk_norm)
+            & (pl.col("embedding_type") == embedding_type)
+            & (pl.col("model_scale") == model_scale)
+            & (pl.col("model_scale_method") == model_scale_method)
+        ).select("depth", "width").collect()
+        num_blocks, width = scales["depth"][0], scales["width"][0]
+
+        label = f"{num_blocks=}, {width=}, {use_qk_norm=}"
+        if loglog:
+            plt.loglog(xs, avg_ys, color=color, label=label)
+        else:
+            plt.plot(xs, avg_ys, color=color, label=label)
+
+    plt.title(f"{embedding_type=}")
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
+    plt.legend()
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+
 
 
 if __name__ == "__main__":
@@ -461,11 +544,31 @@ if __name__ == "__main__":
     # )
     
 
-    file10epochs = "../results/results_v040_10_epochs_5_tries_sqrt_dh.csv"
-    plot_results_compare_norms(
-        file=file10epochs,
-        width=384,
-        depth=8,
+    # file10epochs = "../results/results_v040_10_epochs_5_tries_sqrt_dh.csv"
+    # plot_results_compare_norms(
+    #     file=file10epochs,
+    #     width=384,
+    #     depth=8,
+    #     plot_over="token",
+    #     to_plot="val_pplx",
+    # )
+
+    file = "../results/results_v040_2_epochs_5_tries_all_norm_combos_depth_width_all_embs.csv"
+    # plot_results_compare_norms_and_embedding_type(
+    #     file=file,
+    #     model_scale=1.0,
+    #     model_scale_method="depth",
+    #     plot_over="token",
+    #     to_plot="val_loss",
+    #     loglog=True,
+    #     linear=True,
+    # )
+
+    plot_results_compare_norms_scale(
+        file=file,
+        model_scale_method="depth",
+        to_plot="val_loss",
         plot_over="token",
-        to_plot="val_pplx",
+        loglog=False,
     )
+
