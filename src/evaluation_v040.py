@@ -1,17 +1,12 @@
 """Evaluate results."""
 
 import ast
-import copy
 import itertools
-import math
-import os
 from typing import Literal
 
 import polars as pl
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import numpy as np 
-import torch
 import colorsys
 
 
