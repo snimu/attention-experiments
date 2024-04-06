@@ -429,13 +429,14 @@ def plot_results_compare_norms_and_embedding_type(
 def plot_results_compare_norms_scale(
         file: str,
         embedding_type: Literal["learned", "rotary"] = "rotary",
-        linear: bool = False,
+        linear_value: bool = False,
         use_x_norm: bool = True,
         model_scale_method: Literal["depth", "width", "both"] | None = None,
         to_plot: str = "val_pplx",
         plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
         plot_all: bool = False,
         loglog: bool = False,
+        show: bool = True,
 ) -> None:
     settings_targets = ["use_qk_norm", "model_scale"]
     if model_scale_method is None:
@@ -449,7 +450,7 @@ def plot_results_compare_norms_scale(
         xs, ys, avg_ys = load_xs_ys_avg_y(
             file,
             embedding_type=embedding_type,
-            linear=linear,
+            linear=linear_value,
             use_x_norm=use_x_norm,
             use_qk_norm=use_qk_norm,
             model_scale=model_scale,
@@ -466,29 +467,43 @@ def plot_results_compare_norms_scale(
                     plt.plot(xs, y, color=color, alpha=0.1)
 
         scales = pl.scan_csv(file).filter(
-            (pl.col("linear") == linear)
+            (pl.col("linear") == linear_value)
             & (pl.col("use_x_norm") == True)
             & (pl.col("use_qk_norm") == use_qk_norm)
             & (pl.col("embedding_type") == embedding_type)
             & (pl.col("model_scale") == model_scale)
             & (pl.col("model_scale_method") == model_scale_method)
-        ).select("depth", "width").collect()
-        num_blocks, width = scales["depth"][0], scales["width"][0]
+        ).select("depth", "width", "num_params").collect()
+        depth, width, num_params = scales["depth"][0], scales["width"][0], scales["num_params"][0]
+        num_params = str(num_params)[:2] + "M" if num_params > 1_000_000 else f"{num_params:,}"
 
-        label = f"{num_blocks=}, {width=}, {use_qk_norm=}"
+        label = f"{depth=}, {width=}, {num_params=}"
+        if use_qk_norm:
+            label += ", qk_norm"
         if loglog:
             plt.loglog(xs, avg_ys, color=color, label=label)
         else:
             plt.plot(xs, avg_ys, color=color, label=label)
 
-    plt.title(f"{embedding_type=}")
+    plt.title(f"{embedding_type=}, {linear_value=}")
     plt.xlabel(plot_over)
     plt.ylabel(to_plot)
     plt.legend()
-    plt.tight_layout()
     plt.grid()
-    plt.show()
 
+    # Change the figure size
+    fig = plt.gcf()
+    fig.set_size_inches(12, 7)
+
+    plt.tight_layout()
+
+    if show:
+        plt.show()
+    else:
+        name = f"{'loglog_' if loglog else ''}{to_plot}_{plot_over}_{embedding_type}_{'lin' if linear_value else 'nonlin'}_by_{model_scale_method}"
+        plt.savefig(f"/Users/sebastianmuller/Documents/Schreiben/drafts/writeups/norm-position/images/hlb-v040/{name}.png", dpi=300)
+
+    close_plt()
 
 
 if __name__ == "__main__":
@@ -564,11 +579,15 @@ if __name__ == "__main__":
     #     linear=True,
     # )
 
-    plot_results_compare_norms_scale(
-        file=file,
-        model_scale_method="depth",
-        to_plot="val_loss",
-        plot_over="token",
-        loglog=False,
-    )
+    for et, lv, msm, ll in itertools.product(["learned", "rotary"], [True, False], ["depth", "width"], [True, False]):
+        plot_results_compare_norms_scale(
+            file=file,
+            embedding_type=et,
+            linear_value=lv,
+            model_scale_method=msm,
+            to_plot="val_loss",
+            plot_over="token",
+            loglog=ll,
+            show=False,
+        )
 
