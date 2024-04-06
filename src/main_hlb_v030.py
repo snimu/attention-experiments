@@ -1146,7 +1146,6 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    assert args.residual_depth % 8 == args.resiual_depth % hyp['net']['num_heads'] == 0
 
     args.attn_type = [args.attn_type] if isinstance(args.attn_type, str) else args.attn_type
     args.use_out_proj = [args.use_out_proj] if isinstance(args.use_out_proj, bool) else args.use_out_proj
@@ -1169,6 +1168,8 @@ def get_args() -> argparse.Namespace:
         if not os.path.exists(args.savefile):
             raise FileNotFoundError(f"File {args.savefile} does not exist. Cannot append to it.")
 
+    assert all((r % 8 )== (r % hyp['net']['num_heads']) == 0 for r in args.residual_depth), "Residual depth must be divisible by 8 and the number of heads."
+    
     rich.print(args.__dict__)
     return args
 
