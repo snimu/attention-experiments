@@ -937,7 +937,6 @@ def train_and_eval(hyp, args: argparse.Namespace):
             tokens_seen_val_list = []
             epochs_train_list = []
             epochs_val_list = []
-            param_counts_list = []
             a100_mfu_list = []
             grad_norm_list = []
 
@@ -991,9 +990,9 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 tokens_seen_val_list.append(tokens_seen_val)
                 epochs_train_list.append(epochs_train)
                 epochs_val_list.append(epochs_val)
-                param_counts_list.append(param_counts)
                 a100_mfu_list.append(a100_mfus)
                 grad_norm_list.append(grad_norm_lists)
+                num_params = param_counts[0]
 
             results = {
                 "avg_val_loss": sum(val_loss_list)/len(val_loss_list),
@@ -1008,6 +1007,8 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_qk_norm": setting.get("use_qk_norm", False),
                 "logit_scalar": name_logit_scalar(setting.get("logit_scalar", None)),
                 "residual_depth": setting.get("residual_depth", None),
+                "num_layers": setting.get("num_layers", None),
+                "num_params": num_params,
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
                 "avg_time_secs": sum(time_list)/len(time_list),
@@ -1021,7 +1022,6 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 **to_dict_of_str_encoded_list("tokens_seen_val", tokens_seen_val_list, args.num_tries),
                 **to_dict_of_str_encoded_list("epochs_train", epochs_train_list, args.num_tries),
                 **to_dict_of_str_encoded_list("epochs_val", epochs_val_list, args.num_tries),
-                **to_dict_of_str_encoded_list("param_counts", param_counts_list, args.num_tries),
                 **to_dict_of_str_encoded_list("a100_mfu", a100_mfu_list, args.num_tries),
                 **to_dict_of_str_encoded_list("grad_norm", grad_norm_list, args.num_tries),
                 "seeds": str(seeds),
@@ -1145,6 +1145,8 @@ def get_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
+
+    assert args.residual_depth % 8 == args.resiual_depth % hyp['net']['num_heads'] == 0
 
     args.attn_type = [args.attn_type] if isinstance(args.attn_type, str) else args.attn_type
     args.use_out_proj = [args.use_out_proj] if isinstance(args.use_out_proj, bool) else args.use_out_proj
