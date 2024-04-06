@@ -634,7 +634,7 @@ def train(
         tokens_seen += current_batchsize * current_sequence_length
         if crnt_steps % 10 == 0 and microbatch_step % current_accumulate_steps == 0 and not crnt_steps % hyp['opt']['eval_iter'] == 0:
             tokens_seen_train.append(tokens_seen)
-            epochs_train.append(tokens_seen//len(data['train']))
+            epochs_train.append(tokens_seen/len(data['train']))
         microbatches_since_last_eval += 1
 
         ## Once we've accumulated steps over all of our microbatches, take a single full-batchsize step.
@@ -676,7 +676,7 @@ def train(
 
             if crnt_steps % hyp['opt']['eval_iter'] == 0 or crnt_epoch >= num_epochs or tokens_seen >= num_tokens:
                 tokens_seen_val.append(tokens_seen)
-                epochs_val.append(tokens_seen//len(data['train']))
+                epochs_val.append(tokens_seen/len(data['train']))
                 ender.record()
                 torch.cuda.synchronize()
                 time_secs += 1e-3 * starter.elapsed_time(ender)
