@@ -342,9 +342,9 @@ class SpeedyLangNet(nn.Module):
     # This allows you to customize/change the execution order of the network as needed.
     def forward(self, x):
         x = self.net_dict['embedding'](x) # Look up the input embeddings
-        for block in range(hyp['net']['num_blocks']):
-            x = self.net_dict['attn_layers'][block](x) # note: residuals are included in the block definitions for these layers
-            x = self.net_dict['mlp_layers'][block](x)  # note: residuals are included in the block definitions for these layers
+        for attn, mlp in zip(self.net_dict['attn_layers'], self.net_dict['mlp_layers']):
+            x = attn(x) # note: residuals are included in the block definitions for these layers
+            x = mlp(x)  # note: residuals are included in the block definitions for these layers
         x = self.net_dict['norm'](x)
         x = self.net_dict['outputs'](x)
         return x
@@ -1169,7 +1169,7 @@ def get_args() -> argparse.Namespace:
             raise FileNotFoundError(f"File {args.savefile} does not exist. Cannot append to it.")
 
     assert all((r % 8 )== (r % hyp['net']['num_heads']) == 0 for r in args.residual_depth), "Residual depth must be divisible by 8 and the number of heads."
-    
+
     rich.print(args.__dict__)
     return args
 
