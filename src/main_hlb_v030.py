@@ -627,7 +627,7 @@ def train(
             train_loss = loss.detach().cpu().item()
             train_accs.append(train_acc)
             train_losses.append(train_loss)
-            train_summary_variables = {'epoch': tokens_seen//len(data['train']), 'crnt_steps': crnt_steps, 'train_loss': train_loss, 'train_acc': train_acc}
+            train_summary_variables = {'epoch': tokens_seen/len(data['train']), 'crnt_steps': crnt_steps, 'train_loss': train_loss, 'train_acc': train_acc}
             print_training_details(list(map(partial(format_for_table, locals=train_summary_variables), logging_columns_list)))
 
         loss.div(current_accumulate_steps).backward()
@@ -672,7 +672,7 @@ def train(
             crnt_steps += 1
 
             # Since we're not running over epochs anymore, we have to manually calculate what epoch it is.
-            epoch = tokens_seen//len(data['train'])
+            epoch = tokens_seen/len(data['train'])
 
             if crnt_steps % hyp['opt']['eval_iter'] == 0 or crnt_epoch >= num_epochs or tokens_seen >= num_tokens:
                 tokens_seen_val.append(tokens_seen)
