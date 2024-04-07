@@ -775,11 +775,13 @@ def plot_results_compare_norms_scale(
             & (pl.col("use_qk_norm") == use_qk_norm)
             & (pl.col("residual_depth") == width)
             & (pl.col("num_layers") == depth)
-        ).select("num_layers", "residual_depth", "num_params").collect()
+        ).collect()
         depth, width, num_params = scales["num_layers"][0], scales["residual_depth"][0], scales["num_params"][0]
+        num_heads = scales["num_heads"][0] if "num_heads" in scales.columns else 3
+        head_dim = width // num_heads
         num_params = str(num_params)[:2] + "M" if num_params > 1_000_000 else f"{num_params:,}"
 
-        label = f"{depth=}, {width=}, {num_params=}"
+        label = f"{depth=}, {head_dim=}, {num_heads=}, {num_params=}"
         if use_qk_norm:
             label += ", qk_norm"
         if loglog:
@@ -800,9 +802,9 @@ def plot_results_compare_norms_scale(
 
     if show:
         plt.show()
-    # else:
-    #     name = f"{'loglog_' if loglog else ''}{to_plot}_{plot_over}_{embedding_type}_{'lin' if linear_value else 'nonlin'}_by_{model_scale_method}"
-    #     plt.savefig(f"/Users/sebastianmuller/Documents/Schreiben/drafts/writeups/norm-position/images/hlb-v040/{name}.png", dpi=300)
+    else:
+        name = f"{'loglog_' if loglog else ''}{to_plot}_{plot_over}_by{'_depth' if depth is None else ''}{'_width' if width is None else ''}"
+        plt.savefig(f"/Users/sebastianmuller/Documents/Schreiben/drafts/writeups/norm-position/images/hlb-v030/{name}.png", dpi=300)
 
     close_plt()
     
@@ -856,6 +858,6 @@ if __name__ == "__main__":
         to_plot="val_loss", 
         plot_over="epoch", 
         plot_all=False, 
-        loglog=False, 
+        loglog=True, 
         show=True,
     )
