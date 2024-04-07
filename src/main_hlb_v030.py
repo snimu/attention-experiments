@@ -233,12 +233,12 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         attn = AttentionBlock(
             num_features=kwargs['residual_depth'],
             sequence_length=hyp['misc']['sequence_length']['max'],
-            num_heads=hyp['net']['num_heads'],
+            num_heads=kwargs['num_heads'],
         )
     elif attn_type == "torchMHA":
         attn = attention.TorchMHACausal(
             feature_dim=kwargs['residual_depth'],
-            num_heads=hyp['net']['num_heads'],
+            num_heads=kwargs['num_heads'],
             x_norm=x_norm,
             device=hyp['misc']['device'],
             dtype=hyp['misc']['dtype'],
@@ -246,7 +246,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
     elif attn_type == "vanilla":
         attn = attention.VanillaCausal(
             feature_dim=kwargs['residual_depth'],
-            num_heads=hyp['net']['num_heads'],
+            num_heads=kwargs['num_heads'],
             x_norm=x_norm,
             qkv_norm=qkv_norm,
             qk_norm=qk_norm,
@@ -856,6 +856,10 @@ def filter_num_layers(num_layers: list[int]) -> list[int]:
     return [i for i in list(set(num_layers)) if i > 0]
 
 
+def filter_num_heads(num_heads: list[int]) -> list[int]:
+    return [i for i in list(set(num_heads)) if i > 0]
+
+
 def name_logit_scalar(logic_scalar: Callable[[int, int], float]):
     d, h = 16, 4
     result = logic_scalar(d, h)
@@ -908,7 +912,8 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "qkv_factor": get_qkv_factor(attn_type),
                 "logit_scalar": get_logit_scalar(ls),
                 "residual_depth": rd,
-                "num_layers": nl
+                "num_layers": nl,
+                "num_heads": nh,
             }
             # The functions below pick the correct default values for each attention type
             # even if the wrong ones were given in the command line.
@@ -922,6 +927,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for ls in filter_logit_scalar(attn_type, args.logit_scalar)
             for rd in filter_residual_depth(args.residual_depth)
             for nl in filter_num_layers(args.num_layers)
+            for nh in filter_num_heads(args.num_heads)
         ]
         for setting_num, setting in enumerate(settings):
             hyp = copy.deepcopy(hyp_init)
@@ -1008,6 +1014,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "logit_scalar": name_logit_scalar(setting.get("logit_scalar", None)),
                 "residual_depth": setting.get("residual_depth", None),
                 "num_layers": setting.get("num_layers", None),
+                "num_heads": setting.get("num_heads", None),
                 "num_params": num_params,
                 "num_tries": args.num_tries,
                 "num_steps": args.num_steps,
@@ -1143,6 +1150,12 @@ def get_args() -> argparse.Namespace:
         default=hyp["net"]["num_blocks"],
         nargs="+",
     )
+    parser.add_argument(
+        "--num_heads",
+        type=int,
+        default=hyp["net"]["num_heads"],
+        nargs="+",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -1163,12 +1176,13 @@ def get_args() -> argparse.Namespace:
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
     args.num_layers = [args.num_layers] if isinstance(args.num_layers, int) else args.num_layers
+    args.num_heads = [args.num_heads] if isinstance(args.num_heads, int) else args.num_heads
 
     if args.append:
         if not os.path.exists(args.savefile):
             raise FileNotFoundError(f"File {args.savefile} does not exist. Cannot append to it.")
 
-    assert all((r % 8 )== (r % hyp['net']['num_heads']) == 0 for r in args.residual_depth), "Residual depth must be divisible by 8 and the number of heads."
+    assert all((r % 8 )== (r % nh) == 0 for r in args.residual_depth for nh in args.num_heads), "Residual depth must be divisible by 8 and the number of heads."
 
     rich.print(args.__dict__)
     return args
