@@ -524,7 +524,7 @@ def train(**kwargs):
 
     # Validation parameters
     val_loss, val_acc, val_pplx = None, None, None
-    epoch = 0
+    epoch = 0.0
 
     # Get network
     net = make_net(**kwargs)
@@ -606,6 +606,7 @@ def train(**kwargs):
 
         loss.div(discrete_sampled_mubatch_steps).backward()
         tokens_seen += curr_batchsize * curr_length
+        epoch = tokens_seen/len(data['train'])
 
         # Quick non-eval summary every N training steps, at the end of every microbatch group, if we are not doing a _full eval_ here.
         if curr_step % 10 == 0 and curr_microbatch_step % discrete_sampled_mubatch_steps == 0 and not curr_step % hyp['opt']['eval_every'] == 0:
@@ -617,7 +618,7 @@ def train(**kwargs):
             train_losses.append(train_loss)
             train_accs.append(train_acc)
             tokens_seen_train.append(tokens_seen)
-            epochs_train.append(tokens_seen/len(data['train']))
+            epochs_train.append(epoch)
 
             if epoch >= kwargs["num_epochs_train"] or tokens_seen >= kwargs["num_tokens_train"]:
                 break
@@ -661,9 +662,6 @@ def train(**kwargs):
             curr_microbatch_step = 0
             curr_step += 1
 
-            # Since we're not running over epochs anymore, we have to manually calculate roughly what epoch it is. This is different than the standard random derangement of sampled sequences and has different pros/cons, is my understanding. :thumbsup:
-            epoch = tokens_seen/len(data['train'])
-
             if curr_step % hyp['opt']['eval_every'] == 0:
                 ender.record()
                 torch.cuda.synchronize()
@@ -680,7 +678,7 @@ def train(**kwargs):
                 val_accs.append(val_acc)
                 val_pplxs.append(val_pplx)
                 tokens_seen_val.append(tokens_seen)
-                epochs_val.append(tokens_seen/len(data['train']))
+                epochs_val.append(epoch)
                 grad_norm_list.append(grad_norm)
 
                 # Print out our training details
