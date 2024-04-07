@@ -117,8 +117,21 @@ hyp = {
 }
 
 
-def change_model_scale(scale, method: Literal["depth", "width", "both"] = "both"):
+def change_model_scale(
+        scale, 
+        method: Literal["depth", "width", "both"] = "both", 
+        depth: int | None = None, 
+        width: int | None = None,
+):
     global hyp, model_scale
+
+    assert (depth is None and width is None) or (depth is not None and width is not None), "You must specify both depth and width if you want to change one of them."
+
+    if depth is not None:
+        hyp['net']['residual_depth'] = depth
+        hyp['net']['num_blocks']     = width
+        return 
+
     model_scale = scale
     if method == "depth":
         hyp['net']['residual_depth'] = 384
@@ -700,6 +713,8 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--num_tokens_val", type=int, default=int(1e12), help="Number of tokens after which to break when validating.")
     parser.add_argument("--model_scale", type=float, default=1.0, nargs="+", help="Scale the model size.")
     parser.add_argument("--model_scale_method", type=str, choices=["depth", "width", "both"], nargs="+", default="both", help="Scale the model size using model depth, width, or both.")
+    parser.add_argument("--depth", type=int, default=-1, help="Depth of the model.")
+    parser.add_argument("--width", type=int, default=-1, help="Width of the model.")
     parser.add_argument("--token_capacity_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
     parser.add_argument("--seed", type=int, default=100, help="Seed for the random number generator.")
     parser.add_argument("--linear_value", type=int, default=0, nargs="+", help="Use linear attention blocks.")
@@ -709,6 +724,11 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--embedding_type", type=str, default="learned", nargs="+", choices=["rotary", "learned"], help="Type of positional embedding to use.")
 
     args = parser.parse_args()
+
+    args.depth = [args.depth] if isinstance(args.depth, int) else args.depth
+    args.width = [args.width] if isinstance(args.width, int) else args.width
+    args.depth = [None if d < 1 else d for d in args.depth]
+    args.width = [None if w < 1 else w for w in args.width]
 
     args.model_scale = [args.model_scale] if isinstance(args.model_scale, float) else args.model_scale
     args.model_scale_method = [args.model_scale_method] if isinstance(args.model_scale_method, str) else args.model_scale_method
@@ -735,14 +755,15 @@ def main():
     settings = list(itertools.product(
         args.model_scale, args.model_scale_method, 
         args.linear_value, args.use_x_norm, args.use_qk_norm, args.use_all_norm,
-        args.embedding_type,
+        args.embedding_type, args.depth, args.width,
     ))
     crnt_run_global = 0
 
     for setting_num, (
-            model_scale, model_scale_method, linear_value, use_x_norm, use_qk_norm, use_all_norm, embedding_type
+            model_scale, model_scale_method, linear_value, use_x_norm, use_qk_norm, use_all_norm, embedding_type,
+            depth, width,
     ) in enumerate(settings):
-        change_model_scale(model_scale, model_scale_method)
+        change_model_scale(model_scale, model_scale_method, depth, width)
         net = make_net(
             linear_value=linear_value, 
             use_x_norm=use_x_norm, 
