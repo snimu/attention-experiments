@@ -719,7 +719,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--use_x_norm", type=int, default=1, nargs="+", help="Use LayerNorm for the input.")
     parser.add_argument("--use_qk_norm", type=int, default=0, nargs="+", help="Use LayerNorm for the queries and keys.")
     parser.add_argument("--use_all_norm", type=int, default=0, nargs="+", help="Use LayerNorm for Q, K, V, and MLP outputs.")
-    parser.add_argument("--embedding_type", type=str, default="learned", nargs="+", choices=["rotary", "learned"], help="Type of positional embedding to use.")
+    parser.add_argument("--embedding_type", type=str, default="rotary", nargs="+", choices=["rotary", "learned"], help="Type of positional embedding to use.")
 
     args = parser.parse_args()
 
