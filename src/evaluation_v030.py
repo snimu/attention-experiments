@@ -738,6 +738,7 @@ def plot_results_compare_norms_scale(
         plot_all: bool = False,
         loglog: bool = False,
         show: bool = True,
+        prepend_str: str = "",
 ) -> None:
     settings = get_unique_settings(
         file, 
@@ -750,14 +751,14 @@ def plot_results_compare_norms_scale(
         settings = [s for s in settings if s[2] == width]
     colors = generate_distinct_colors(len(settings))
 
-    for color, (use_qk_norm, depth, width) in zip(colors, settings, strict=True):
+    for color, (use_qk_norm, depth_, width_) in zip(colors, settings, strict=True):
         xs, ys, avg_ys = load_xs_ys_avg_y(
             file,
             attn_type="vanilla",
             use_x_norm=use_x_norm,
             use_qk_norm=use_qk_norm,
-            residual_depth=width,
-            num_layers=depth,
+            residual_depth=width_,
+            num_layers=depth_,
             to_plot=to_plot,
             plot_over=plot_over,
         )
@@ -773,15 +774,15 @@ def plot_results_compare_norms_scale(
             (pl.col("attn_type") == "vanilla")
             & (pl.col("use_x_norm") == use_x_norm)
             & (pl.col("use_qk_norm") == use_qk_norm)
-            & (pl.col("residual_depth") == width)
-            & (pl.col("num_layers") == depth)
+            & (pl.col("residual_depth") == width_)
+            & (pl.col("num_layers") == depth_)
         ).collect()
-        depth, width, num_params = scales["num_layers"][0], scales["residual_depth"][0], scales["num_params"][0]
+        num_params = scales["num_params"][0]
         num_heads = scales["num_heads"][0] if "num_heads" in scales.columns else 3
-        head_dim = width // num_heads
+        head_dim = width_ // num_heads
         num_params = str(num_params)[:2] + "M" if num_params > 1_000_000 else f"{num_params:,}"
 
-        label = f"{depth=}, {head_dim=}, {num_heads=}, {num_params=}"
+        label = f"depth={depth_}, {head_dim=}, {num_heads=}, {num_params=}"
         if use_qk_norm:
             label += ", qk_norm"
         if loglog:
@@ -803,7 +804,7 @@ def plot_results_compare_norms_scale(
     if show:
         plt.show()
     else:
-        name = f"{'loglog_' if loglog else ''}{to_plot}_{plot_over}_by{'_depth' if depth is None else ''}{'_width' if width is None else ''}"
+        name = f"{prepend_str}{'loglog_' if loglog else ''}{to_plot}_{plot_over}{'_by' if depth is not None or width is not None else ''}{'_depth' if depth is None else ''}{'_width' if width is None else ''}"
         plt.savefig(f"/Users/sebastianmuller/Documents/Schreiben/drafts/writeups/norm-position/images/hlb-v030/{name}.png", dpi=300)
 
     close_plt()
@@ -850,14 +851,28 @@ if __name__ == "__main__":
     # plot_correlations(file=file_10e, attn_type="vanilla", from_step_list=[0, 800], logit_scalar="sqrt_dh")
 
     file = "../results/results_v030_scaling.csv"
+    # plot_results_compare_norms_scale(
+    #     file, 
+    #     use_x_norm=True, 
+    #     depth=6, 
+    #     width=None, 
+    #     to_plot="val_pplx", 
+    #     plot_over="epoch", 
+    #     plot_all=False, 
+    #     loglog=True, 
+    #     show=False,
+    # )
+
+    file = "../results/results_v030_pythia.csv"
     plot_results_compare_norms_scale(
         file, 
         use_x_norm=True, 
-        depth=6, 
+        depth=None, 
         width=None, 
         to_plot="val_loss", 
         plot_over="epoch", 
         plot_all=False, 
-        loglog=True, 
+        loglog=False, 
         show=True,
+        prepend_str="pythia_",
     )
