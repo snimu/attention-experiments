@@ -18,6 +18,3 @@ version: 0.0.0
 date-released: 2023-03-05
 url: "https://github.com/tysam-code/hlb-gpt"
 ```
-
-The diffusion code is based heavily on [The Annotated Diffusion Model](https://huggingface.co/blog/annotated-diffusion)
-by [Niels Rogge](https://huggingface.co/nielsr) and [Kashif Rasul](https://huggingface.co/kashif).
