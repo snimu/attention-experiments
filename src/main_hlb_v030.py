@@ -849,7 +849,7 @@ def filter_logit_scalar(attn_type: str, logit_scalar: list[str]) -> list[str]:
 
 
 def filter_residual_depth(residual_depth: list[int]) -> list[int]:
-    return [i for i in list(set(residual_depth)) if (i > 0) and (i % 3 == 0) and (i % 8 == 0)]
+    return [i for i in list(set(residual_depth)) if (i > 0) and (i % 8 == 0)]
 
 
 def filter_num_layers(num_layers: list[int]) -> list[int]:
