@@ -128,8 +128,8 @@ def change_model_scale(
     assert (depth is None and width is None) or (depth is not None and width is not None), "You must specify both depth and width if you want to change one of them."
 
     if depth is not None:
-        hyp['net']['residual_depth'] = depth
-        hyp['net']['num_blocks']     = width
+        hyp['net']['residual_depth'] = width
+        hyp['net']['num_blocks']     = depth
         return 
 
     model_scale = scale
