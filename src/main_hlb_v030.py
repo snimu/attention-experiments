@@ -894,6 +894,8 @@ def to_dict_of_str_encoded_list(name: str, item: list, nums: int) -> dict[str, s
 
 
 def train_and_eval(hyp, args: argparse.Namespace):
+    global batchsize
+    batchsize = args.batchsize  # use this to control memory consumption
     if not args.save:
         rich.print("\n\nWARNING: Not saving results to disk.\n\n")
 
@@ -1074,6 +1076,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--num_steps", type=int, default=500)
     parser.add_argument("--num_epochs", type=int, default=100)  # unlimited epochs by default
     parser.add_argument("--num_tokens", type=int, default=int(1e12))  # unlimited tokens by default
+    parser.add_argument("--batchsize", type=int, default=batchsize)
     parser.add_argument(
         "--attn_type", 
         type=str, 
