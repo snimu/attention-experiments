@@ -896,6 +896,7 @@ def to_dict_of_str_encoded_list(name: str, item: list, nums: int) -> dict[str, s
 def train_and_eval(hyp, args: argparse.Namespace):
     global batchsize
     batchsize = args.batchsize  # use this to control memory consumption
+    hyp['opt']['lr'] = math.sqrt(batchsize / 64) * hyp['opt']['lr']  # scale the learning rate with the batch size
     if not args.save:
         rich.print("\n\nWARNING: Not saving results to disk.\n\n")
 
