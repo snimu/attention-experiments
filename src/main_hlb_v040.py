@@ -617,7 +617,7 @@ def train(**kwargs):
             train_losses.append(train_loss)
             train_accs.append(train_acc)
             tokens_seen_train.append(tokens_seen)
-            epochs_train.append(tokens_seen//len(data['train']))
+            epochs_train.append(tokens_seen/len(data['train']))
 
             if epoch >= kwargs["num_epochs_train"] or tokens_seen >= kwargs["num_tokens_train"]:
                 break
@@ -680,7 +680,7 @@ def train(**kwargs):
                 val_accs.append(val_acc)
                 val_pplxs.append(val_pplx)
                 tokens_seen_val.append(tokens_seen)
-                epochs_val.append(tokens_seen//len(data['train']))
+                epochs_val.append(tokens_seen/len(data['train']))
                 grad_norm_list.append(grad_norm)
 
                 # Print out our training details
