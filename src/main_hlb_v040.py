@@ -662,7 +662,7 @@ def train(**kwargs):
             curr_step += 1
 
             # Since we're not running over epochs anymore, we have to manually calculate roughly what epoch it is. This is different than the standard random derangement of sampled sequences and has different pros/cons, is my understanding. :thumbsup:
-            epoch = tokens_seen//len(data['train'])
+            epoch = tokens_seen/len(data['train'])
 
             if curr_step % hyp['opt']['eval_every'] == 0:
                 ender.record()
