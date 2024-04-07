@@ -610,10 +610,9 @@ def train(**kwargs):
 
         # Quick non-eval summary every N training steps, at the end of every microbatch group, if we are not doing a _full eval_ here.
         if curr_step % 10 == 0 and curr_microbatch_step % discrete_sampled_mubatch_steps == 0 and not curr_step % hyp['opt']['eval_every'] == 0:
-            epoch = tokens_seen/len(data['train'])
             train_acc          = (outputs.detach().argmax(-1) == targets).float().mean().item()
             train_loss         = loss.detach().cpu().item()
-            train_summary_vars = {'epoch': tokens_seen//len(data['train']), 'curr_step': curr_step, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm}
+            train_summary_vars = {'epoch': epoch, 'curr_step': curr_step, 'train_loss': train_loss, 'train_acc': train_acc, 'grad_norm': grad_norm}
 
             print_training_details(format_for_table(variables_to_log, locals=train_summary_vars))
             train_losses.append(train_loss)
@@ -673,7 +672,6 @@ def train(**kwargs):
 
                 net.eval()
                 val_acc, val_loss, val_pplx = eval(net)
-                epoch = tokens_seen/len(data['train'])
 
                 # Log the validation loss and accuracy
                 val_losses.append(val_loss)
