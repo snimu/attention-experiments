@@ -38,6 +38,7 @@ def load_xs_ys_avg_y(
         use_qk_norm: bool | None = None,
         identity_weight: float | None = None,
         residual_depth: int | None = None,
+        num_layers: int | None = None,
         logit_scalar: str | None = None,
         to_plot: str = "val_loss",
         plot_over: Literal["step", "epoch", "token"] = "step",
@@ -64,6 +65,8 @@ def load_xs_ys_avg_y(
         filters &= (pl.col("use_qk_norm") == use_qk_norm)
     if residual_depth is not None:
         filters &= (pl.col("residual_depth") == residual_depth)
+    if num_layers is not None:
+        filters &= (pl.col("num_layers") == num_layers)
     if logit_scalar is not None:
         filters &= (pl.col("logit_scalar") == logit_scalar)
 
@@ -862,6 +865,85 @@ def find_best_attn_setting_diffusion(file: str) -> None:
             best_out_attn = out_attn
 
     print(f"Best attn setting: {best_in_attn}-{best_mid_attn}-{best_out_attn}")
+
+
+def plot_results_compare_norms_scale(
+        file: str,
+        use_x_norm: bool = True,
+        depth: int | None = None,
+        width: int | None = None,
+        to_plot: str = "val_pplx",
+        plot_over: Literal["step", "epoch", "token", "time_sec"] = "epoch",
+        plot_all: bool = False,
+        loglog: bool = False,
+        show: bool = True,
+) -> None:
+    settings = get_unique_settings(
+        file, 
+        targets=["use_qk_norm", "num_layers", "residual_depth"], 
+    )
+    settings = [s[1:] for s in settings]  # Remove attn_type
+    if depth is not None:
+        settings = [s for s in settings if s[1] == depth]
+    if width is not None:
+        settings = [s for s in settings if s[2] == width]
+    colors = generate_distinct_colors(len(settings))
+
+    for color, (use_qk_norm, depth, width) in zip(colors, settings, strict=True):
+        xs, ys, avg_ys = load_xs_ys_avg_y(
+            file,
+            attn_type="vanilla",
+            use_x_norm=use_x_norm,
+            use_qk_norm=use_qk_norm,
+            residual_depth=width,
+            num_layers=depth,
+            to_plot=to_plot,
+            plot_over=plot_over,
+        )
+
+        if plot_all:
+            for y in ys:
+                if loglog:
+                    plt.loglog(xs, y, color=color, alpha=0.1)
+                else:
+                    plt.plot(xs, y, color=color, alpha=0.1)
+
+        scales = pl.scan_csv(file).filter(
+            (pl.col("attn_type") == "vanilla")
+            & (pl.col("use_x_norm") == use_x_norm)
+            & (pl.col("use_qk_norm") == use_qk_norm)
+            & (pl.col("residual_depth") == width)
+            & (pl.col("num_layers") == depth)
+        ).select("num_layers", "residual_depth", "num_params").collect()
+        depth, width, num_params = scales["num_layers"][0], scales["residual_depth"][0], scales["num_params"][0]
+        num_params = str(num_params)[:2] + "M" if num_params > 1_000_000 else f"{num_params:,}"
+
+        label = f"{depth=}, {width=}, {num_params=}"
+        if use_qk_norm:
+            label += ", qk_norm"
+        if loglog:
+            plt.loglog(xs, avg_ys, color=color, label=label)
+        else:
+            plt.plot(xs, avg_ys, color=color, label=label)
+
+    plt.xlabel(plot_over)
+    plt.ylabel(to_plot)
+    plt.legend()
+    plt.grid()
+
+    # Change the figure size
+    fig = plt.gcf()
+    fig.set_size_inches(12, 7)
+
+    plt.tight_layout()
+
+    if show:
+        plt.show()
+    # else:
+    #     name = f"{'loglog_' if loglog else ''}{to_plot}_{plot_over}_{embedding_type}_{'lin' if linear_value else 'nonlin'}_by_{model_scale_method}"
+    #     plt.savefig(f"/Users/sebastianmuller/Documents/Schreiben/drafts/writeups/norm-position/images/hlb-v040/{name}.png", dpi=300)
+
+    close_plt()
     
 
 if __name__ == "__main__":
@@ -885,21 +967,34 @@ if __name__ == "__main__":
     #     plot_over="token",
     # )
 
-    for to_plot, from_step, attn_type, file in itertools.product(to_plot_list, from_step_list, attn_types_list, files):
-        print(f"Plotting {to_plot} for {attn_type} from step {from_step}, file {file}\n")
-        plot_llm_1000_steps_100_tries_by_norm_position(
-            file=file,
-            attn_type=attn_type, 
-            to_plot=to_plot,
-            plot_over=plot_over,
-            show_all_plots=False,
-            from_step=from_step,
-            save=save,
-            logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
-        )
-        print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
-        plot_metric_variance(file=file, to_plot=to_plot, from_step=from_step, save=save, plot_over=plot_over)
+    # for to_plot, from_step, attn_type, file in itertools.product(to_plot_list, from_step_list, attn_types_list, files):
+    #     print(f"Plotting {to_plot} for {attn_type} from step {from_step}, file {file}\n")
+    #     plot_llm_1000_steps_100_tries_by_norm_position(
+    #         file=file,
+    #         attn_type=attn_type, 
+    #         to_plot=to_plot,
+    #         plot_over=plot_over,
+    #         show_all_plots=False,
+    #         from_step=from_step,
+    #         save=save,
+    #         logit_scalar="sqrt_dh" if attn_type == "vanilla" else None,
+    #     )
+    #     print(f"Plotting variance of {to_plot} for {attn_type} from step {from_step}\n")
+    #     plot_metric_variance(file=file, to_plot=to_plot, from_step=from_step, save=save, plot_over=plot_over)
     # for to_plot in ("val_loss", "train_loss"):
     #     print(f"Plotting {to_plot} for vanilla from step 0")
     #     get_loss_acc_correlation(file=file_1000, attn_type="vanilla", train="train" in to_plot, from_step=800)
     # plot_correlations(file=file_10e, attn_type="vanilla", from_step_list=[0, 800], logit_scalar="sqrt_dh")
+
+    file = "../results/results_v030_scaling.csv"
+    plot_results_compare_norms_scale(
+        file, 
+        use_x_norm=True, 
+        depth=6, 
+        width=None, 
+        to_plot="val_loss", 
+        plot_over="epoch", 
+        plot_all=False, 
+        loglog=False, 
+        show=True,
+    )
