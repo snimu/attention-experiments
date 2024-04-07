@@ -1,0 +1,3 @@
+python main_hlb_v040.py -s --savefile "results_v040_pythia.csv" --num_runs 1 --num_epochs 2 --num_steps 2000 --seed 11000 --use_x_norm 1 --use_qk_norm 0 1 --depth 5 --width 512 --token_capacity_factor 0.4
+python main_hlb_v040.py -s --append --savefile "results_v040_pythia.csv" --num_runs 1 --num_epochs 2 --num_steps 2000 --seed 11000 --use_x_norm 1 --use_qk_norm 0 1 --depth 11 --width 768 --token_capacity_factor 0.4
+python main_hlb_v040.py -s --append --savefile "results_v040_pythia.csv" --num_runs 1 --num_epochs 2 --num_steps 2000 --seed 11000 --use_x_norm 1 --use_qk_norm 0 1 --depth 23 --width 1024 --token_capacity_factor 0.4
