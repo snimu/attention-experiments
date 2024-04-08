@@ -306,6 +306,7 @@ class LatentAttentionBlock(nn.Module):
 
         if self.num_heads > 1:
             attention = einops.rearrange(attention, 'b h n d -> b n (h d)')
+            geglu_local = einops.rearrange(geglu_local, 'b h n d -> b n (h d)')
 
         # Output linear layer
         out = F.linear(torch.cat([geglu_local, attention], dim=-1), self.project)
