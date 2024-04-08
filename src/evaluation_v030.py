@@ -1,7 +1,6 @@
 """Evaluate results."""
 
 import ast
-import copy
 import itertools
 import math
 import os
@@ -869,7 +868,7 @@ if __name__ == "__main__":
         use_x_norm=True, 
         depth=None, 
         width=None, 
-        to_plot="val_loss", 
+        to_plot="val_pplx", 
         plot_over="epoch", 
         plot_all=False, 
         loglog=False, 
