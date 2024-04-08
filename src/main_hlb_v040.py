@@ -240,6 +240,7 @@ class LatentAttentionBlock(nn.Module):
             use_qk_norm: bool,
             use_all_norm: bool,
             embedding_type: Literal["rotary", "learned"] = "learned",
+            num_heads: int = 1,
     ):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
@@ -247,6 +248,7 @@ class LatentAttentionBlock(nn.Module):
         self.qk_dim     = self.dim//hyp['net']['qk_dim_div']
         self.v_dim      = num_dim
         self.expand_dim = num_dim * hyp['net']['expand_factor']
+        self.num_heads  = num_heads
 
         # Main layer weights
         self.linear_value = linear_value
@@ -296,8 +298,14 @@ class LatentAttentionBlock(nn.Module):
         else:
             geglu_local, geglu_attention_value = geglu.split((self.expand_dim-self.v_dim, self.v_dim), -1)
 
+        if self.num_heads > 1:
+            query, key, geglu_local, geglu_attention_value = map(lambda x: einops.rearrange(x, 'b n (h d) -> b h n d', h=self.num_heads), (query, key, geglu_local, geglu_attention_value))
+
         # Compute attention. Something to note is that there are no attention heads here. This seemed to work a bit better, maybe due to not needing memory `.contiguous()` calls or similar
         attention = F.scaled_dot_product_attention(query, key, geglu_attention_value, attn_mask=attn_mask)
+
+        if self.num_heads > 1:
+            attention = einops.rearrange(attention, 'b h n d -> b n (h d)')
 
         # Output linear layer
         out = F.linear(torch.cat([geglu_local, attention], dim=-1), self.project)
@@ -336,7 +344,8 @@ def make_attn(num_dim, **kwargs):
         use_x_norm=kwargs["use_x_norm"],
         use_qk_norm=kwargs["use_qk_norm"],
         use_all_norm=kwargs["use_all_norm"],
-        embedding_type=kwargs["embedding_type"]
+        embedding_type=kwargs["embedding_type"],
+        num_heads=kwargs["num_heads"],
     )
 
 
@@ -713,6 +722,7 @@ def get_args_() -> argparse.Namespace:
     parser.add_argument("--model_scale_method", type=str, choices=["depth", "width", "both"], nargs="+", default="both", help="Scale the model size using model depth, width, or both.")
     parser.add_argument("--depth", type=int, default=-1, help="Depth of the model.")
     parser.add_argument("--width", type=int, default=-1, help="Width of the model.")
+    parser.add_argument("--num_heads", type=int, default=1, help="Number of attention heads.")
     parser.add_argument("--token_capacity_factor", type=float, default=1.0, help="Maximum number of tokens that fit on the device.")
     parser.add_argument("--seed", type=int, default=100, help="Seed for the random number generator.")
     parser.add_argument("--linear_value", type=int, default=0, nargs="+", help="Use linear attention blocks.")
@@ -741,6 +751,8 @@ def get_args_() -> argparse.Namespace:
     args.use_qk_norm = [bool(i) for i in args.use_qk_norm]
     args.use_all_norm = [bool(i) for i in args.use_all_norm]
 
+    assert args.width % args.num_heads == 0, "Width must be divisible by the number of heads."
+
     print(args.__dict__)
 
     return args
@@ -753,13 +765,13 @@ def main():
     settings = list(itertools.product(
         args.model_scale, args.model_scale_method, 
         args.linear_value, args.use_x_norm, args.use_qk_norm, args.use_all_norm,
-        args.embedding_type, args.depth, args.width,
+        args.embedding_type, args.depth, args.width, args.num_heads,
     ))
     crnt_run_global = 0
 
     for setting_num, (
             model_scale, model_scale_method, linear_value, use_x_norm, use_qk_norm, use_all_norm, embedding_type,
-            depth, width,
+            depth, width, num_heads,
     ) in enumerate(settings):
         change_model_scale(model_scale, model_scale_method, depth, width)
         net = make_net(
@@ -768,6 +780,7 @@ def main():
             use_qk_norm=use_qk_norm,
             use_all_norm=use_all_norm,
             embedding_type=embedding_type,
+            num_heads=num_heads,
         )
         num_params = sum([p.data.numel() if p.requires_grad else 0 for p in net.parameters()])
         del net
@@ -802,6 +815,7 @@ def main():
                 use_qk_norm=use_qk_norm, 
                 use_all_norm=use_all_norm,
                 embedding_type=embedding_type,
+                num_heads=num_heads,
                 num_steps=args.num_steps,
                 num_epochs_train=args.num_epochs_train,
                 num_epochs_val=args.num_epochs_val, 
@@ -819,6 +833,7 @@ def main():
                 "num_params": [total_trainable_params],
                 "depth": [hyp['net']['num_blocks']],
                 "width": [hyp['net']['residual_depth']],
+                "num_heads": [num_heads],
                 "seed": [seed],
                 "run_num": [run_num+1],
                 "train_loss": [str(train_losses)],
