@@ -737,6 +737,7 @@ def get_args_() -> argparse.Namespace:
     args.width = [args.width] if isinstance(args.width, int) else args.width
     args.depth = [None if d < 1 else d for d in args.depth]
     args.width = [None if w < 1 else w for w in args.width]
+    args.num_heads = [args.num_heads] if isinstance(args.num_heads, int) else args.num_heads
 
     args.model_scale = [args.model_scale] if isinstance(args.model_scale, float) else args.model_scale
     args.model_scale_method = [args.model_scale_method] if isinstance(args.model_scale_method, str) else args.model_scale_method
@@ -751,7 +752,7 @@ def get_args_() -> argparse.Namespace:
     args.use_qk_norm = [bool(i) for i in args.use_qk_norm]
     args.use_all_norm = [bool(i) for i in args.use_all_norm]
 
-    assert args.width % args.num_heads == 0, "Width must be divisible by the number of heads."
+    assert ((w % h) == 0 for w in args.width for h in args.num_heads), "Width must be divisible by the number of heads."
 
     print(args.__dict__)
 
