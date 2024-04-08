@@ -780,7 +780,7 @@ def plot_results_compare_norms_scale(
         num_params = scales["num_params"][0]
         num_heads = scales["num_heads"][0] if "num_heads" in scales.columns else 3
         head_dim = width_ // num_heads
-        num_params = str(num_params)[:2] + "M" if num_params > 1_000_000 else f"{num_params:,}"
+        num_params = str(round(num_params/1_000_000)) + "M" if num_params > 1_000_000 else f"{num_params:,}"
 
         label = f"depth={depth_}, {head_dim=}, {num_heads=}, {num_params=}"
         if use_qk_norm:
