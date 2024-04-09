@@ -197,6 +197,7 @@ def create_layernorms(
         qkv_factor: int = 3,
         use_qkv_weight: bool = False,
         use_qk_norm: bool = False,
+        use_qk_weight: bool = False,
 ) -> tuple[nn.Module, nn.Module, nn.Module]:
     x_norm = LayerNorm(
         residual_depth, 
@@ -212,7 +213,7 @@ def create_layernorms(
     qk_norm = LayerNorm(
         int(residual_depth),
         bias=False,
-        weight=False,
+        weight=use_qk_weight,
     ) if use_qk_norm else nn.Identity()
     return x_norm, qk_norm, qkv_norm
 
@@ -225,6 +226,7 @@ def create_attention(attn_type, **kwargs):  # kwargs for things that I actually 
         qkv_factor=kwargs['qkv_factor'],
         use_qkv_weight=kwargs['use_qkv_weight'],
         use_qk_norm=kwargs['use_qk_norm'],
+        use_qk_weight=kwargs['use_qk_weight'],
     )
 
     if attn_type == "identity":
@@ -816,9 +818,11 @@ def filter_use_qkv_norm(
 
 def filter_use_qk_norm(attn_type: str, use_qk_norm: list[bool]) -> list[bool]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "hercules", "zeus"]:
-        return [False]
+        return [False, False]
     elif attn_type in ["hydra", "vanilla"]:
-        return list(set(use_qk_norm))
+        norms = list(set(use_qk_norm))
+        weights = list(set(use_qk_norm))
+        return [(n, w) for n in norms for w in weights]
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
@@ -912,6 +916,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_qkv_norm": uqkvn,
                 "use_qkv_weight": uqkvw,
                 "use_qk_norm": uqkn,
+                "use_qk_weight": uqkw,
                 "qkv_factor": get_qkv_factor(attn_type),
                 "logit_scalar": get_logit_scalar(ls),
                 "residual_depth": rd,
@@ -926,7 +931,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for fm_attn in filter_feature_map_attn(attn_type, args.feature_map_attn)
             for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
             for uqkvn, uqkvw in filter_use_qkv_norm(attn_type, args.use_qkv_norm, args.use_qkv_weight)
-            for uqkn in filter_use_qk_norm(attn_type, args.use_qk_norm)
+            for uqkn, uqkw in filter_use_qk_norm(attn_type, args.use_qk_norm)
             for ls in filter_logit_scalar(attn_type, args.logit_scalar)
             for rd in filter_residual_depth(args.residual_depth)
             for nl in filter_num_layers(args.num_layers)
@@ -1136,6 +1141,12 @@ def get_args() -> argparse.Namespace:
         nargs="+",
     )
     parser.add_argument(
+        "--use_qk_weight",
+        type=int,
+        default=0,
+        nargs="+",
+    )
+    parser.add_argument(
         "--logit_scalar",
         type=str,
         default=["sqrt_dh"],
@@ -1177,6 +1188,8 @@ def get_args() -> argparse.Namespace:
     args.use_qkv_weight = [bool(uqkvw) for uqkvw in args.use_qkv_weight]
     args.use_qk_norm = [args.use_qk_norm] if isinstance(args.use_qk_norm, int) else args.use_qk_norm
     args.use_qk_norm = [bool(aqn) for aqn in args.use_qk_norm]
+    args.use_qk_weight = [args.use_qk_weight] if isinstance(args.use_qk_weight, int) else args.use_qk_weight
+    args.use_qk_weight = [bool(aqw) for aqw in args.use_qk_weight]
     args.logit_scalar = [args.logit_scalar] if isinstance(args.logit_scalar, str) else args.logit_scalar
     args.residual_depth = [args.residual_depth] if isinstance(args.residual_depth, int) else args.residual_depth
     args.num_layers = [args.num_layers] if isinstance(args.num_layers, int) else args.num_layers
