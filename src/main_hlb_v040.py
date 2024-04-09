@@ -795,6 +795,9 @@ def main():
             feedback += (
                 f"\n  {model_scale=}"
                 f"\n  {model_scale_method=}"
+                f"\n  {depth=}"
+                f"\n  {width=}"
+                f"\n  {num_heads=}"
                 f"\n  {linear_value=}"
                 f"\n  {use_x_norm=}"
                 f"\n  {use_qk_norm=}"
