@@ -816,13 +816,13 @@ def filter_use_qkv_norm(
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
 
-def filter_use_qk_norm(attn_type: str, use_qk_norm: list[bool]) -> list[bool]:
+def filter_use_qk_norm(attn_type: str, use_qk_norm: list[bool], use_qk_weight: list[bool]) -> list[bool]:
     if attn_type in ["identity", "hlb-gpt", "torchMHA", "hercules", "zeus"]:
         return [False, False]
     elif attn_type in ["hydra", "vanilla"]:
         norms = list(set(use_qk_norm))
-        weights = list(set(use_qk_norm))
-        return [(n, w) for n in norms for w in weights]
+        weights = list(set(use_qk_weight))
+        return [(n, w) for n in norms for w in weights if (n, w) != (False, True)]
     
     raise ValueError(f"Unrecognized attention type: {attn_type}")
 
