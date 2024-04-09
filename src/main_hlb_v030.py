@@ -1019,6 +1019,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
                 "use_qkv_norm": setting.get("use_qkv_norm", False),
                 "use_qkv_weight": setting.get("use_qkv_weight", False),
                 "use_qk_norm": setting.get("use_qk_norm", False),
+                "use_qk_weight": setting.get("use_qk_weight", False),
                 "logit_scalar": name_logit_scalar(setting.get("logit_scalar", None)),
                 "residual_depth": setting.get("residual_depth", None),
                 "num_layers": setting.get("num_layers", None),
