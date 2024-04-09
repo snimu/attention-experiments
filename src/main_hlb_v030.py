@@ -931,7 +931,7 @@ def train_and_eval(hyp, args: argparse.Namespace):
             for fm_attn in filter_feature_map_attn(attn_type, args.feature_map_attn)
             for uxn in filter_use_x_norm(attn_type, args.use_x_norm)
             for uqkvn, uqkvw in filter_use_qkv_norm(attn_type, args.use_qkv_norm, args.use_qkv_weight)
-            for uqkn, uqkw in filter_use_qk_norm(attn_type, args.use_qk_norm)
+            for uqkn, uqkw in filter_use_qk_norm(attn_type, args.use_qk_norm, args.use_qk_weight)
             for ls in filter_logit_scalar(attn_type, args.logit_scalar)
             for rd in filter_residual_depth(args.residual_depth)
             for nl in filter_num_layers(args.num_layers)
