@@ -518,6 +518,7 @@ def plot_results_compare_norms_depth_width(
         plot_all: bool = False,
         loglog: bool = False,
         show: bool = True,
+        prepend_str: str = "",
 ) -> None:
     settings = get_unique_settings(file, ["use_qk_norm", "depth", "width"])
     if depth is not None:
@@ -555,11 +556,14 @@ def plot_results_compare_norms_depth_width(
             & (pl.col("width") == width_)
         ).collect()
         num_params = scales["num_params"][0]
-        num_params = str(num_params)[:2] + "M" if num_params > 1_000_000 else f"{num_params:,}"
+        num_params = str(num_params // 1_000_000) + "M" if num_params > 1_000_000 else f"{num_params:,}"
 
-        label = f"depth={depth_}, width={width_}, {num_params=}"
+        num_heads = scales["num_heads"][0] if "num_heads" in scales.columns else 1
+        head_dim = width_ // num_heads
+        label = f"depth={depth_}, {head_dim=}, {num_heads=}, {num_params=}"
         if use_qk_norm:
             label += ", qk_norm"
+
         if loglog:
             plt.loglog(xs, avg_ys, color=color, label=label)
         else:
@@ -580,7 +584,7 @@ def plot_results_compare_norms_depth_width(
     if show:
         plt.show()
     else:
-        name = f"{'loglog_' if loglog else ''}{to_plot}_{plot_over}_{embedding_type}_{'lin' if linear_value else 'nonlin'}"
+        name = f"{prepend_str}{'loglog_' if loglog else ''}{to_plot}_{plot_over}_{embedding_type}_{'lin' if linear_value else 'nonlin'}"
         plt.savefig(f"/Users/sebastianmuller/Documents/Schreiben/drafts/writeups/norm-position/images/hlb-v040/{name}.png", dpi=300)
 
     close_plt()
@@ -674,12 +678,26 @@ if __name__ == "__main__":
     file = "../results/results_v040_pythia.csv"
     plot_results_compare_norms_depth_width(
         file=file,
-        embedding_type="learned",
+        embedding_type="rotary",
         linear_value=False,
         use_x_norm=True,
         to_plot="val_loss",
         plot_over="epoch",
         loglog=False,
         show=True,
+        prepend_str="pythia_",
+    )
+
+    file = "../results/results_v040_pythia_with_heads.csv"
+    plot_results_compare_norms_depth_width(
+        file=file,
+        embedding_type="rotary",
+        linear_value=False,
+        use_x_norm=True,
+        to_plot="val_loss",
+        plot_over="epoch",
+        loglog=False,
+        show=True,
+        prepend_str="pythia_with_heads_",
     )
 
